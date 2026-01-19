@@ -23,30 +23,55 @@ app.use(express.static(path.join(__dirname, '../public')));
 // Initialize bot instance (will be started after DB init)
 const bot = new KickBot();
 
+// Handle uncaught errors to prevent crashes
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  // Don't exit - let Railway handle it
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  // Don't exit - let Railway handle it
+});
+
 // Initialize database and bot
 async function startServer() {
   try {
+    console.log('Starting server initialization...');
+    
     // Initialize database first
     await db.initDatabase();
     console.log('Database initialized successfully');
     
-    // Then start bot
-    await bot.start();
-    console.log('Kick Bot started');
+    // Then start bot (don't await - let it start in background)
+    bot.start().catch((error) => {
+      console.error('Bot startup error (non-fatal):', error);
+      // Don't crash the server if bot fails to start
+    });
     
-    // Start the HTTP server after everything is initialized
+    // Start the HTTP server immediately (Railway needs this)
     // Listen on 0.0.0.0 to accept connections from Railway
-    app.listen(PORT, '0.0.0.0', () => {
+    const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on http://0.0.0.0:${PORT}`);
       console.log(`Server is ready to accept connections`);
     });
+    
+    // Keep server alive
+    server.keepAliveTimeout = 65000;
+    server.headersTimeout = 66000;
+    
   } catch (error) {
     console.error('Failed to start server:', error);
-    process.exit(1);
+    // Don't exit - Railway will restart
+    throw error;
   }
 }
 
-startServer();
+// Start server
+startServer().catch((error) => {
+  console.error('Server startup failed:', error);
+  // Railway will handle restart
+});
 
 // OAuth Routes
 app.get('/auth/kick', (req, res) => {
@@ -640,13 +665,19 @@ app.post('/api/chat/message', async (req, res) => {
   }
 });
 
-// Health check endpoint
+// Health check endpoint (Railway uses this)
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
+    botStarted: bot.isBotStarted(),
   });
+});
+
+// Root health check (Railway might check this)
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
 });
 
 // API endpoint to get bot username for invite page
