@@ -17,24 +17,26 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 console.log(`PORT from environment: ${process.env.PORT || 'not set, using 3000'}`);
 console.log(`Using PORT: ${PORT}`);
 
-app.use(cors());
-app.use(cookieParser());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
-
-// Health check endpoints MUST be before static files (Railway checks these)
+// CRITICAL: Health check MUST be FIRST - before ANY middleware
+// Railway checks this immediately on startup - it must respond instantly
 app.get('/health', (req, res) => {
-  res.status(200).send('OK');
+  res.status(200).setHeader('Content-Type', 'text/plain').send('OK');
 });
 
 app.get('/api/health', (req, res) => {
-  res.json({
+  res.status(200).json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     botStarted: bot.isBotStarted(),
   });
 });
+
+// Now add middleware (after health checks)
+app.use(cors());
+app.use(cookieParser());
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
 app.use(express.static(path.join(__dirname, '../public')));
 
