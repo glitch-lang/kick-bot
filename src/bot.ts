@@ -207,6 +207,7 @@ export class KickBot {
 
   private async handleSetupChatCommand(message: KickChatMessage, channelSlug: string) {
     const userId = message.user.username;
+    console.log(`!setupchat received from @${userId} in channel: ${channelSlug}`);
     
     // Check if already registered
     const existing = await db.getStreamerByChannelName(channelSlug);
@@ -219,43 +220,54 @@ export class KickBot {
       return;
     }
     
-      // Get channel info to get username
-      try {
-        const channelInfo = await kickAPI.getChannelInfo(channelSlug);
-        if (!channelInfo) {
-          const botToken = process.env.BOT_ACCESS_TOKEN || '';
-          if (botToken) {
-            await this.sendMessage(channelSlug, botToken, `@${userId} Could not get channel info. Please try again.`);
-          }
-          return;
+    // Get channel info to get username
+    try {
+      console.log(`Getting channel info for: ${channelSlug}`);
+      const channelInfo = await kickAPI.getChannelInfo(channelSlug);
+      if (!channelInfo) {
+        console.error(`Could not get channel info for: ${channelSlug}`);
+        const botToken = process.env.BOT_ACCESS_TOKEN || '';
+        if (botToken) {
+          await this.sendMessage(channelSlug, botToken, `@${userId} Could not get channel info. Please try again.`);
         }
-        
-        // Get username from channel slug (slug is usually the username)
-        // Or fetch user info if needed
-        const username = channelSlug; // Channel slug is typically the username
-        
-        // Create streamer entry (without OAuth token - will use bot token for sending)
-        // For now, we'll use a placeholder token - in production you'd want OAuth
-        const placeholderToken = 'bot_token_' + channelSlug;
-        const streamerId = await db.createStreamer({
-          username: username,
-          kick_user_id: channelInfo.user_id?.toString() || channelSlug,
-          access_token: placeholderToken,
-          refresh_token: undefined,
-          channel_name: channelSlug,
-          cooldown_seconds: 60,
-          is_active: 1,
-        });
+        return;
+      }
+      
+      console.log(`Channel info retrieved: ${JSON.stringify(channelInfo)}`);
+      
+      // Get username from channel slug (slug is usually the username)
+      // Or fetch user info if needed
+      const username = channelSlug; // Channel slug is typically the username
+      
+      // Create streamer entry (without OAuth token - will use bot token for sending)
+      // For now, we'll use a placeholder token - in production you'd want OAuth
+      const placeholderToken = 'bot_token_' + channelSlug;
+      console.log(`Creating streamer entry for: ${username}`);
+      const streamerId = await db.createStreamer({
+        username: username,
+        kick_user_id: channelInfo.user_id?.toString() || channelSlug,
+        access_token: placeholderToken,
+        refresh_token: undefined,
+        channel_name: channelSlug,
+        cooldown_seconds: 60,
+        is_active: 1,
+      });
+      
+      console.log(`Streamer created with ID: ${streamerId}`);
       
       // Reload streamers to include new one
       await this.loadStreamers();
       
       const botToken = process.env.BOT_ACCESS_TOKEN || '';
       if (botToken) {
+        console.log(`Sending success message to channel: ${channelSlug}`);
         await this.sendMessage(channelSlug, botToken, `@${userId} ✅ Channel registered! Your command is: !${channelSlug} | Default cooldown: 60s | Use !cooldownchat <seconds> to change.`);
+      } else {
+        console.error('BOT_ACCESS_TOKEN not set!');
       }
     } catch (error: any) {
       console.error('Error setting up chat:', error);
+      console.error('Error stack:', error.stack);
     }
   }
   
