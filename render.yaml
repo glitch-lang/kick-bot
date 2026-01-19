@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: kick-cross-streamer-bot
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+    # Add these in Render dashboard:
+    # KICK_CLIENT_ID
+    # KICK_CLIENT_SECRET
+    # KICK_REDIRECT_URI (will be https://your-app.onrender.com/auth/kick/callback)

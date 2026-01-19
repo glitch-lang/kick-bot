@@ -1,0 +1,12 @@
+Kick Developer App Redirect URI:
+
+For Local Development:
+http://localhost:3000/auth/kick/callback
+
+For Production (replace with your domain):
+https://yourdomain.com/auth/kick/callback
+
+IMPORTANT: 
+- Copy this EXACTLY as shown (including http/https, port number, and path)
+- Add this to your Kick Developer App settings at https://dev.kick.com
+- Make sure it matches exactly in both the Kick app settings AND your .env file

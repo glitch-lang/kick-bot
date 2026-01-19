@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kick Cross-Streamer Bot</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎮 Kick Cross-Streamer Bot</h1>
+            <p>Connect with other streamers through channel commands!</p>
+        </header>
+
+        <div class="tabs">
+            <button class="tab-button active" onclick="showTab('home')">Home</button>
+            <button class="tab-button" onclick="showTab('invite')">Invite Bot</button>
+            <button class="tab-button" onclick="showTab('register')">Register</button>
+            <button class="tab-button" onclick="showTab('dashboard')">Dashboard</button>
+            <button class="tab-button" onclick="showTab('communities')">Communities</button>
+        </div>
+
+        <!-- Home Tab -->
+        <div id="home-tab" class="tab-content active">
+            <div class="card">
+                <h2>Welcome!</h2>
+                <p>This bot allows streamers to connect with each other through chat commands.</p>
+                <h3>How it works:</h3>
+                <ol>
+                    <li><strong>Register:</strong> Link your Kick account - your channel name becomes your command!</li>
+                    <li><strong>Your Command:</strong> Viewers can message you by typing <code>!yourchannelname &lt;message&gt;</code></li>
+                    <li><strong>Set Cooldown:</strong> Control how often viewers can message you (prevents spam)</li>
+                    <li><strong>Discover:</strong> Use <code>!streamers</code> to see all registered streamers</li>
+                    <li><strong>Check Online:</strong> Use <code>!online</code> to see which streamers are currently live</li>
+                    <li><strong>Respond:</strong> Use <code>!respond &lt;id&gt; &lt;message&gt;</code> to reply to messages</li>
+                </ol>
+                <h3>Features:</h3>
+                <ul>
+                    <li>✅ Automatic commands (your channel name = your command)</li>
+                    <li>✅ Cooldown system (prevents spam)</li>
+                    <li>✅ Cross-streamer messaging</li>
+                    <li>✅ <code>!streamers</code> command to discover all streamers</li>
+                    <li>✅ Online status checking with <code>!online</code></li>
+                    <li>✅ Automatic refunds when target streamer is offline</li>
+                    <li>✅ Easy response system</li>
+                </ul>
+                <div class="alert alert-info">
+                    <strong>Note:</strong> You'll need to set up a custom Channel Points reward in your Kick dashboard for this to work properly.
+                </div>
+            </div>
+        </div>
+
+        <!-- Invite Bot Tab -->
+        <div id="invite-tab" class="tab-content">
+            <div class="card">
+                <h2>🤖 Invite Bot to Your Channel</h2>
+                <p>Follow these steps to add the bot to your Kick channel:</p>
+                
+                <div class="alert alert-info">
+                    <strong>Bot Username:</strong> <span id="bot-username-display">[Loading...]</span><br>
+                    <strong>Quick Setup:</strong> Add the bot as a moderator, then type <code>!setupchat</code> in your chat!
+                </div>
+                
+                <div class="alert alert-success">
+                    <strong>💡 How to Find the Bot:</strong><br>
+                    • Bot username is shown above<br>
+                    • Search for it on Kick.com<br>
+                    • Add it as a moderator in your channel settings<br>
+                    • Or visit the bot's Kick channel (if available)
+                </div>
+
+                <h3>Step 1: Add Bot to Your Channel</h3>
+                <p>You need to add the bot account to your Kick channel. Choose one method:</p>
+                
+                <h4>Method A: Chat Command (Easiest)</h4>
+                <ol>
+                    <li>Make sure the bot account (<strong id="bot-username-display-2">[Bot Username]</strong>) exists on Kick.com</li>
+                    <li>The bot may auto-join, or you can invite it manually (see Method B)</li>
+                    <li>In your Kick chat, type: <code>!setupchat</code></li>
+                    <li>The bot will register your channel automatically</li>
+                </ol>
+
+                <h4>Method B: Manual Invite</h4>
+                <ol>
+                    <li>Go to your Kick channel settings: <a href="https://kick.com/dashboard/settings" target="_blank">kick.com/dashboard/settings</a></li>
+                    <li>Navigate to "Moderators" or "Bots" section</li>
+                    <li>Add the bot account: <strong id="bot-username-display-3">[Bot Username]</strong></li>
+                    <li>Give the bot permission to send messages</li>
+                    <li>Go to your channel chat</li>
+                    <li>Type: <code>!setupchat</code></li>
+                </ol>
+
+                <h3>Step 2: Register Your Channel</h3>
+                <p>Once the bot is in your channel:</p>
+                <ol>
+                    <li>In your Kick chat, type: <code>!setupchat</code></li>
+                    <li>Bot responds: "✅ Channel registered! Your command is: !yourchannelname"</li>
+                    <li>Your channel name becomes your command automatically</li>
+                </ol>
+
+                <h3>Step 3: Set Cooldown (Optional)</h3>
+                <p>Control how often viewers can message you:</p>
+                <ul>
+                    <li>Type: <code>!cooldownchat 60</code> (60 seconds = 1 minute)</li>
+                    <li>Adjust the number to your preference</li>
+                    <li>Example: <code>!cooldownchat 300</code> = 5 minutes</li>
+                </ul>
+
+                <h3>Bot Account Setup</h3>
+                <div class="alert alert-warning">
+                    <strong>Important:</strong> The bot needs an access token to send messages.
+                    <ul style="margin-top: 10px;">
+                        <li>Create a bot account on Kick.com</li>
+                        <li>Get an OAuth access token for the bot account</li>
+                        <li>Add <code>BOT_ACCESS_TOKEN</code> to the server's <code>.env</code> file</li>
+                        <li>The bot account needs <code>chat:write</code> permission</li>
+                    </ul>
+                </div>
+
+                <h3>After Setup</h3>
+                <p>Once the bot is in your channel and you've run <code>!setupchat</code>:</p>
+                <ul>
+                    <li>✅ Your channel is registered</li>
+                    <li>✅ Viewers can message you using <code>!yourchannelname &lt;message&gt;</code></li>
+                    <li>✅ You can respond with <code>!respond &lt;id&gt; &lt;message&gt;</code></li>
+                    <li>✅ Cooldowns prevent spam</li>
+                </ul>
+
+                <div class="alert alert-success">
+                    <strong>Need Help?</strong> Check the <a href="#" onclick="showTab('home'); return false;">Home</a> tab for more information about commands and features.
+                </div>
+            </div>
+        </div>
+
+        <!-- Register Tab -->
+        <div id="register-tab" class="tab-content">
+            <div class="card">
+                <h2>Register Your Channel</h2>
+                <p>Connect your Kick account to start using the bot.</p>
+                <div class="alert alert-info">
+                    <strong>How it works:</strong> Click the button below to authorize the bot to access your Kick account. 
+                    You'll be redirected to Kick to grant permissions, then brought back here to complete registration.
+                </div>
+                <button class="btn btn-primary" onclick="registerWithKick()">
+                    Connect with Kick
+                </button>
+                <div id="register-status"></div>
+            </div>
+        </div>
+
+        <!-- Manual Registration Tab (shown when auto-registration fails) -->
+        <div id="manual-register-tab" class="tab-content" style="display: none;">
+            <div class="card">
+                <h2>Complete Registration</h2>
+                <p>We received your authorization but need a bit more information to complete registration.</p>
+                <form id="manual-register-form">
+                    <div class="form-group">
+                        <label for="manual-username">Your Kick Username:</label>
+                        <input type="text" id="manual-username" required placeholder="your_username">
+                    </div>
+                    <div class="form-group">
+                        <label for="manual-channel">Your Channel Name (slug):</label>
+                        <input type="text" id="manual-channel" required placeholder="your_channel_name">
+                        <small>This is usually the same as your username, or found in your Kick channel URL</small>
+                    </div>
+                    <input type="hidden" id="manual-token">
+                    <button type="submit" class="btn btn-primary">Complete Registration</button>
+                </form>
+                <div id="manual-register-status"></div>
+            </div>
+        </div>
+
+        <!-- Admin Setup Tab (hidden by default, can be shown if needed) -->
+        <div id="admin-setup-tab" class="tab-content" style="display: none;">
+            <div class="card">
+                <h2>Administrator Setup</h2>
+                <div class="alert alert-info">
+                    <strong>Redirect URI for Kick Developer App:</strong><br>
+                    <code style="background: #f4f4f4; padding: 10px; display: block; margin: 10px 0; border-radius: 4px;">
+                        http://localhost:3000/auth/kick/callback
+                    </code>
+                    <p style="margin-top: 10px;">
+                        Copy this URL and add it to your Kick Developer App settings at 
+                        <a href="https://dev.kick.com" target="_blank">dev.kick.com</a>
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dashboard Tab -->
+        <div id="dashboard-tab" class="tab-content">
+            <div class="card">
+                <h2>Your Dashboard</h2>
+                <div id="dashboard-content">
+                    <p>Please register first to access your dashboard.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Communities Tab -->
+        <div id="communities-tab" class="tab-content">
+            <div class="card">
+                <h2>Participating Communities</h2>
+                <div id="communities-list">
+                    <p>Loading communities...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <script src="/app.js"></script>
+</body>
+</html>
