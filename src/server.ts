@@ -18,6 +18,21 @@ app.use(cors());
 app.use(cookieParser());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+
+// Health check endpoints MUST be before static files (Railway checks these)
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    botStarted: bot.isBotStarted(),
+  });
+});
+
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Initialize bot instance (will be started after DB init)
@@ -36,15 +51,29 @@ process.on('unhandledRejection', (reason, promise) => {
   // CRITICAL: Don't exit - keep the server running
 });
 
-// Handle SIGTERM gracefully (Railway sends this)
+// Handle SIGTERM gracefully (Railway sends this for graceful shutdown)
+let isShuttingDown = false;
 process.on('SIGTERM', () => {
-  console.log('Received SIGTERM, but keeping server alive...');
-  // Don't exit - Railway might be checking health
+  console.log('Received SIGTERM - Railway is requesting shutdown');
+  if (!isShuttingDown) {
+    isShuttingDown = true;
+    console.log('Initiating graceful shutdown...');
+    // Give Railway time to verify health, then allow shutdown
+    setTimeout(() => {
+      console.log('Graceful shutdown complete');
+      process.exit(0);
+    }, 5000); // 5 second grace period
+  }
 });
 
 process.on('SIGINT', () => {
-  console.log('Received SIGINT, but keeping server alive...');
-  // Don't exit immediately
+  console.log('Received SIGINT');
+  if (!isShuttingDown) {
+    isShuttingDown = true;
+    setTimeout(() => {
+      process.exit(0);
+    }, 2000);
+  }
 });
 
 // Keep process alive - prevent accidental exits
@@ -717,20 +746,7 @@ app.post('/api/chat/message', async (req, res) => {
   }
 });
 
-// Health check endpoint (Railway uses this)
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    botStarted: bot.isBotStarted(),
-  });
-});
-
-// Root health check (Railway might check this)
-app.get('/health', (req, res) => {
-  res.status(200).send('OK');
-});
+// Health check endpoints are defined at the top (before static files)
 
 // API endpoint to get bot username for invite page
 app.get('/api/bot/info', (req, res) => {
