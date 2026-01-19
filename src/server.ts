@@ -20,12 +20,24 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, '../public')));
 
-// Initialize database
-db.initDatabase().catch(console.error);
+// Initialize database and bot
+async function startServer() {
+  try {
+    // Initialize database first
+    await db.initDatabase();
+    console.log('Database initialized successfully');
+    
+    // Then start bot
+    const bot = new KickBot();
+    await bot.start();
+    console.log('Kick Bot started');
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+}
 
-// Initialize bot
-const bot = new KickBot();
-bot.start().catch(console.error);
+startServer();
 
 // OAuth Routes
 app.get('/auth/kick', (req, res) => {
