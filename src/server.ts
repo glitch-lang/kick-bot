@@ -17,34 +17,38 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 console.log(`PORT from environment: ${process.env.PORT || 'not set, using 3000'}`);
 console.log(`Using PORT: ${PORT}`);
 
-// CRITICAL: Health check MUST be FIRST - before ANY middleware
+// Initialize bot instance (will be started after DB init)
+// MUST be before health check endpoints that reference it
+const bot = new KickBot();
+
+// CRITICAL: Health check routes MUST be registered FIRST - before ANY middleware
 // Railway checks this immediately on startup - it must respond instantly
-// This endpoint has ZERO dependencies - responds immediately
-app.get('/health', (req, res) => {
+// These endpoints have ZERO dependencies - respond immediately
+// IMPORTANT: These MUST be defined before any middleware or catch-all routes
+app.get('/health', (req, res, next) => {
   // No async, no database, no bot - just respond immediately
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('OK');
+  // Use Express res.send() for proper handling
+  res.status(200).setHeader('Content-Type', 'text/plain').send('OK');
+  // Explicitly end the response to prevent further middleware
+  return;
 });
 
-app.get('/api/health', (req, res) => {
+app.get('/api/health', (req, res, next) => {
   res.status(200).json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     botStarted: bot.isBotStarted(),
   });
+  // Explicitly end the response to prevent further middleware
+  return;
 });
 
-// Now add middleware (after health checks)
+// Now add middleware (after health check routes are registered)
 app.use(cors());
 app.use(cookieParser());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-
-app.use(express.static(path.join(__dirname, '../public')));
-
-// Initialize bot instance (will be started after DB init)
-const bot = new KickBot();
 
 // Handle uncaught errors to prevent crashes - NEVER EXIT
 process.on('uncaughtException', (error) => {
@@ -89,26 +93,27 @@ const keepAlive = setInterval(() => {
   // Just keep the process running
 }, 30000); // Every 30 seconds
 
-// Initialize database and bot
-async function startServer() {
+// CRITICAL: Start HTTP server IMMEDIATELY (synchronously) - before any async operations
+// Railway checks health endpoint within seconds of container start
+console.log('Starting HTTP server immediately...');
+console.log(`PORT: ${PORT}`);
+console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
+
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ Server running on http://0.0.0.0:${PORT}`);
+  console.log(`✅ Server is ready to accept connections`);
+  console.log(`✅ Health check available at http://0.0.0.0:${PORT}/health`);
+  console.log(`✅ Railway can now reach the server on port ${PORT}`);
+});
+
+// Keep server alive - prevent timeouts
+server.keepAliveTimeout = 65000;
+server.headersTimeout = 66000;
+
+// Initialize database and bot in background (non-blocking)
+async function startBackgroundServices() {
   try {
-    console.log('Starting server initialization...');
-    console.log(`PORT: ${PORT}`);
-    console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
-    
-    // Start the HTTP server FIRST (Railway needs this immediately)
-    // CRITICAL: Must listen on 0.0.0.0 (not localhost) so Railway can reach it
-    // CRITICAL: Must use process.env.PORT (Railway assigns this dynamically)
-    const server = app.listen(PORT, '0.0.0.0', () => {
-      console.log(`✅ Server running on http://0.0.0.0:${PORT}`);
-      console.log(`✅ Server is ready to accept connections`);
-      console.log(`✅ Health check available at http://0.0.0.0:${PORT}/health`);
-      console.log(`✅ Railway can now reach the server on port ${PORT}`);
-    });
-    
-    // Keep server alive - prevent timeouts
-    server.keepAliveTimeout = 65000;
-    server.headersTimeout = 66000;
+    console.log('Starting background services (database, bot)...');
     
     // Prevent server from closing
     server.on('close', () => {
@@ -151,15 +156,8 @@ async function startServer() {
   }
 }
 
-// Start server and keep reference
-let serverInstance: any = null;
-startServer().then((server) => {
-  serverInstance = server;
-  console.log('✅ Server startup completed');
-}).catch((error: any) => {
-  console.error('❌ Server startup promise rejected:', error);
-  // Don't exit - keep process alive
-});
+// Start background services (database, bot) - non-blocking
+startBackgroundServices();
 
 // Keep process alive forever
 console.log('✅ Process started, keeping alive...');
@@ -936,8 +934,26 @@ app.get('/bot-token', (req, res) => {
   `);
 });
 
-// Serve frontend
-app.get('*', (req, res) => {
+// Serve static files (CSS, JS) - AFTER all API routes
+// Only serve static files if NOT a health endpoint
+const staticMiddleware = express.static(path.join(__dirname, '../public'));
+app.use((req, res, next) => {
+  // Skip static file serving for health endpoints
+  if (req.path === '/health' || req.path === '/api/health') {
+    return next();
+  }
+  staticMiddleware(req, res, next);
+});
+
+// Serve frontend (catch-all must be LAST and must exclude health endpoints)
+// IMPORTANT: Express routes are matched in order, so health routes above will match first
+// But we still need to exclude them here as a safety measure
+app.get('*', (req, res, next) => {
+  // Skip health endpoints - they're handled above
+  if (req.path === '/health' || req.path === '/api/health') {
+    // Don't send response - health route already handled it
+    return next('route'); // Skip to next matching route (but there isn't one, so this prevents response)
+  }
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
