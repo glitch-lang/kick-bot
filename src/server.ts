@@ -20,6 +20,9 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, '../public')));
 
+// Initialize bot instance (will be started after DB init)
+const bot = new KickBot();
+
 // Initialize database and bot
 async function startServer() {
   try {
@@ -28,7 +31,6 @@ async function startServer() {
     console.log('Database initialized successfully');
     
     // Then start bot
-    const bot = new KickBot();
     await bot.start();
     console.log('Kick Bot started');
   } catch (error) {
