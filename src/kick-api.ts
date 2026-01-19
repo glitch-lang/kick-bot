@@ -145,6 +145,33 @@ export class KickAPI {
     }
   }
 
+  // App Access Token (Client Credentials flow) - for bot/server-to-server operations
+  async getAppAccessToken(
+    clientId: string,
+    clientSecret: string
+  ): Promise<{ access_token: string; token_type: string; expires_in: number }> {
+    try {
+      // Kick requires application/x-www-form-urlencoded
+      const params = new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: clientId,
+        client_secret: clientSecret,
+      });
+      
+      const response = await axios.post('https://id.kick.com/oauth/token', params.toString(), {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+      });
+      
+      console.log('App Access Token obtained successfully');
+      return response.data;
+    } catch (error: any) {
+      console.error('App Access Token error:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
   // Chat methods
   async sendChatMessage(
     channelSlug: string,

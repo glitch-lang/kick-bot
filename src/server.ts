@@ -310,6 +310,29 @@ app.get('/auth/kick/callback', async (req, res) => {
       streamer = await db.getStreamerById(streamerId);
     }
     
+    // If this is a bot account registration, show the token for Railway
+    // Check if username matches BOT_USERNAME or if it's the first registration
+    const botUsername = process.env.BOT_USERNAME;
+    const isBotAccount = botUsername && userInfo.username.toLowerCase() === botUsername.toLowerCase();
+    
+    if (isBotAccount) {
+      // Store token temporarily to display it
+      const crypto = require('crypto');
+      const tokenDisplayId = crypto.randomBytes(16).toString('hex');
+      if (!(global as any).tokenDisplays) {
+        (global as any).tokenDisplays = new Map();
+      }
+      (global as any).tokenDisplays.set(tokenDisplayId, {
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        username: userInfo.username,
+        expires_at: Date.now() + 300000, // 5 minutes
+      });
+      
+      // Redirect to token display page
+      return res.redirect(`/bot-token?token_id=${tokenDisplayId}`);
+    }
+    
     // Redirect to home page with dashboard tab and streamer_id
     // Store streamer_id in session/cookie for persistence
     res.cookie('streamer_id', streamer?.id?.toString(), { httpOnly: false, maxAge: 86400000 }); // 24 hours
@@ -626,6 +649,144 @@ app.get('/api/bot/info', (req, res) => {
     inviteUrl: `https://kick.com/${process.env.BOT_USERNAME || 'yourbot'}`,
     webUrl: req.protocol + '://' + req.get('host'),
   });
+});
+
+// API endpoint to get App Access Token (Client Credentials flow) for bot
+app.get('/api/bot/token', async (req, res) => {
+  try {
+    const clientId = process.env.KICK_CLIENT_ID;
+    const clientSecret = process.env.KICK_CLIENT_SECRET;
+    
+    if (!clientId || !clientSecret) {
+      return res.status(400).json({ 
+        error: 'KICK_CLIENT_ID and KICK_CLIENT_SECRET must be set in environment variables' 
+      });
+    }
+    
+    // Get App Access Token using Client Credentials flow
+    const tokenData = await kickAPI.getAppAccessToken(clientId, clientSecret);
+    
+    res.json({
+      success: true,
+      access_token: tokenData.access_token,
+      token_type: tokenData.token_type,
+      expires_in: tokenData.expires_in,
+      message: 'Copy this access_token to BOT_ACCESS_TOKEN in Railway Variables'
+    });
+  } catch (error: any) {
+    console.error('Error getting App Access Token:', error);
+    res.status(500).json({ 
+      error: error.message || 'Failed to get App Access Token',
+      details: error.response?.data 
+    });
+  }
+});
+
+// Bot token display page (after OAuth for bot account)
+app.get('/bot-token', (req, res) => {
+  const tokenId = req.query.token_id as string;
+  if (!tokenId) {
+    return res.status(400).send(`
+      <html>
+        <head><title>Bot Token</title></head>
+        <body style="font-family: Arial; padding: 20px;">
+          <h1>❌ Invalid Request</h1>
+          <p>No token ID provided.</p>
+          <a href="/">Go Home</a>
+        </body>
+      </html>
+    `);
+  }
+  
+  const tokenData = (global as any).tokenDisplays?.get(tokenId);
+  if (!tokenData || Date.now() > tokenData.expires_at) {
+    return res.status(404).send(`
+      <html>
+        <head><title>Bot Token</title></head>
+        <body style="font-family: Arial; padding: 20px;">
+          <h1>❌ Token Not Found or Expired</h1>
+          <p>This token display link has expired. Please authorize again.</p>
+          <a href="/auth/kick">Authorize Again</a> | <a href="/">Go Home</a>
+        </body>
+      </html>
+    `);
+  }
+  
+  // Delete token after displaying (one-time use)
+  (global as any).tokenDisplays.delete(tokenId);
+  
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Bot Token - Copy This!</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
+          .token-box { background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0; word-break: break-all; }
+          .token-box code { font-size: 14px; }
+          .copy-btn { background: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+          .copy-btn:hover { background: #45a049; }
+          .success { color: #4CAF50; font-weight: bold; }
+          .warning { background: #fff3cd; padding: 15px; border-radius: 4px; margin: 20px 0; }
+          .steps { background: #e7f3ff; padding: 15px; border-radius: 4px; margin: 20px 0; }
+          .steps ol { margin: 10px 0; padding-left: 20px; }
+          .steps li { margin: 8px 0; }
+        </style>
+      </head>
+      <body>
+        <h1>✅ Bot Token Retrieved!</h1>
+        <p class="success">Your bot account "${tokenData.username}" has been authorized.</p>
+        
+        <div class="warning">
+          <strong>⚠️ Important:</strong> Copy this token now! This page will only show it once.
+        </div>
+        
+        <h2>Bot Access Token:</h2>
+        <div class="token-box">
+          <code id="token">${tokenData.access_token}</code>
+        </div>
+        <button class="copy-btn" onclick="copyToken()">📋 Copy Token</button>
+        <p id="copy-status"></p>
+        
+        <div class="steps">
+          <h3>📋 Next Steps - Add to Railway:</h3>
+          <ol>
+            <li>Copy the token above</li>
+            <li>Go to <strong>Railway Dashboard</strong> → Your Project → <strong>Variables</strong> tab</li>
+            <li>Add new variable: <code>BOT_ACCESS_TOKEN</code></li>
+            <li>Paste the token as the value</li>
+            <li>Also add: <code>BOT_USERNAME</code> = <code>${tokenData.username}</code></li>
+            <li>Railway will automatically redeploy</li>
+          </ol>
+        </div>
+        
+        <h3>Bot Username:</h3>
+        <div class="token-box">
+          <code>${tokenData.username}</code>
+        </div>
+        <button class="copy-btn" onclick="copyUsername()">📋 Copy Username</button>
+        
+        <p style="margin-top: 30px;">
+          <a href="/">← Go Home</a>
+        </p>
+        
+        <script>
+          function copyToken() {
+            const token = document.getElementById('token').textContent;
+            navigator.clipboard.writeText(token).then(() => {
+              document.getElementById('copy-status').innerHTML = '<span class="success">✅ Token copied to clipboard!</span>';
+            });
+          }
+          
+          function copyUsername() {
+            navigator.clipboard.writeText('${tokenData.username}').then(() => {
+              alert('✅ Username copied to clipboard!');
+            });
+          }
+        </script>
+      </body>
+    </html>
+  `);
 });
 
 // Serve frontend
