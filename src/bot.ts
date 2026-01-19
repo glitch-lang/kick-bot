@@ -14,47 +14,84 @@ export class KickBot {
   private isStarted: boolean = false;
 
   async start() {
-    console.log('Starting Kick Bot...');
-    
-    // Load all active streamers and their commands
-    await this.loadStreamers();
-    
-    // Start polling for chat messages (since WebSocket may not be available)
-    this.startPolling();
-    
-    // Cleanup expired cooldowns periodically
-    setInterval(() => {
-      db.cleanupExpiredCooldowns();
-    }, 60000); // Every minute
-    
-    this.isStarted = true;
-    console.log('Kick Bot started and ready');
+    try {
+      console.log('Starting Kick Bot...');
+      
+      // Load all active streamers and their commands
+      try {
+        await this.loadStreamers();
+      } catch (error: any) {
+        console.error('Error loading streamers (non-fatal):', error);
+        // Continue even if streamers fail to load
+      }
+      
+      // Start polling for chat messages (since WebSocket may not be available)
+      this.startPolling();
+      
+      // Cleanup expired cooldowns periodically
+      setInterval(() => {
+        try {
+          db.cleanupExpiredCooldowns();
+        } catch (error: any) {
+          console.error('Error cleaning up cooldowns:', error);
+        }
+      }, 60000); // Every minute
+      
+      this.isStarted = true;
+      console.log('Kick Bot started and ready');
+    } catch (error: any) {
+      console.error('Bot start error:', error);
+      console.error('Bot error details:', error.message);
+      // Mark as started anyway so API endpoints work
+      this.isStarted = true;
+    }
   }
 
   private async loadStreamers() {
-    const streamers = await db.getAllActiveStreamers();
-    
-    for (const streamer of streamers) {
-      await this.connectToChannel(streamer);
+    try {
+      const streamers = await db.getAllActiveStreamers();
+      console.log(`Loading ${streamers.length} streamers...`);
+      
+      for (const streamer of streamers) {
+        try {
+          await this.connectToChannel(streamer);
+        } catch (error: any) {
+          console.error(`Error connecting to channel ${streamer.channel_name}:`, error);
+          // Continue with other streamers
+        }
+      }
+    } catch (error: any) {
+      console.error('Error loading streamers:', error);
+      // Don't throw - allow bot to continue
     }
   }
 
   private async connectToChannel(streamer: db.Streamer) {
-    console.log(`Connecting to channel: ${streamer.channel_name}`);
-    
-    // Set up message handler - no need for commands, we'll check all streamers
-    const onMessage = async (message: KickChatMessage) => {
-      await this.handleMessage(streamer, message);
-    };
-    
-    this.listeners.set(streamer.channel_name, {
-      channelSlug: streamer.channel_name,
-      streamerId: streamer.id,
-      onMessage,
-    });
-    
-    // Connect via Kick API (now async)
-    await kickAPI.connectToChat(streamer.channel_name, onMessage);
+    try {
+      console.log(`Connecting to channel: ${streamer.channel_name}`);
+      
+      // Set up message handler - no need for commands, we'll check all streamers
+      const onMessage = async (message: KickChatMessage) => {
+        try {
+          await this.handleMessage(streamer, message);
+        } catch (error: any) {
+          console.error(`Error handling message in ${streamer.channel_name}:`, error);
+        }
+      };
+      
+      this.listeners.set(streamer.channel_name, {
+        channelSlug: streamer.channel_name,
+        streamerId: streamer.id,
+        onMessage,
+      });
+      
+      // Connect via Kick API (now async)
+      await kickAPI.connectToChat(streamer.channel_name, onMessage);
+      console.log(`Successfully connected to channel: ${streamer.channel_name}`);
+    } catch (error: any) {
+      console.error(`Failed to connect to channel ${streamer.channel_name}:`, error);
+      // Don't throw - allow other channels to connect
+    }
   }
 
   private async handleMessage(

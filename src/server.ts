@@ -39,17 +39,7 @@ async function startServer() {
   try {
     console.log('Starting server initialization...');
     
-    // Initialize database first
-    await db.initDatabase();
-    console.log('Database initialized successfully');
-    
-    // Then start bot (don't await - let it start in background)
-    bot.start().catch((error) => {
-      console.error('Bot startup error (non-fatal):', error);
-      // Don't crash the server if bot fails to start
-    });
-    
-    // Start the HTTP server immediately (Railway needs this)
+    // Start the HTTP server FIRST (Railway needs this immediately)
     // Listen on 0.0.0.0 to accept connections from Railway
     const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on http://0.0.0.0:${PORT}`);
@@ -60,18 +50,34 @@ async function startServer() {
     server.keepAliveTimeout = 65000;
     server.headersTimeout = 66000;
     
-  } catch (error) {
+    // Initialize database in background (non-blocking)
+    db.initDatabase().then(() => {
+      console.log('Database initialized successfully');
+      
+      // Then start bot in background (non-blocking)
+      bot.start().then(() => {
+        console.log('Bot started successfully');
+      }).catch((error) => {
+        console.error('Bot startup error (non-fatal):', error);
+        console.error('Bot error details:', error.message);
+        // Don't crash the server if bot fails to start
+      });
+    }).catch((error) => {
+      console.error('Database initialization error (non-fatal):', error);
+      console.error('Database error details:', error.message);
+      // Don't crash the server if database fails
+    });
+    
+  } catch (error: any) {
     console.error('Failed to start server:', error);
+    console.error('Server error details:', error.message);
+    console.error('Server error stack:', error.stack);
     // Don't exit - Railway will restart
-    throw error;
   }
 }
 
 // Start server
-startServer().catch((error) => {
-  console.error('Server startup failed:', error);
-  // Railway will handle restart
-});
+startServer();
 
 // OAuth Routes
 app.get('/auth/kick', (req, res) => {
