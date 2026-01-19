@@ -33,6 +33,11 @@ async function startServer() {
     // Then start bot
     await bot.start();
     console.log('Kick Bot started');
+    
+    // Start the HTTP server after everything is initialized
+    app.listen(PORT, () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);
@@ -825,6 +830,4 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+// Server is started in startServer() function after initialization
