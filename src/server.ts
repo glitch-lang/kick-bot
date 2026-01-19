@@ -651,6 +651,29 @@ app.get('/api/bot/info', (req, res) => {
   });
 });
 
+// API endpoint to connect bot to a channel (for !setupchat)
+app.post('/api/bot/connect', async (req, res) => {
+  try {
+    const { channelSlug } = req.body;
+    
+    if (!channelSlug) {
+      return res.status(400).json({ error: 'Missing channelSlug' });
+    }
+    
+    // Connect bot to channel (will listen for !setupchat)
+    await bot.connectToChannelForSetup(channelSlug);
+    
+    res.json({ 
+      success: true, 
+      message: `Bot connected to channel: ${channelSlug}. You can now use !setupchat in your chat.`,
+      channelSlug 
+    });
+  } catch (error: any) {
+    console.error('Error connecting bot to channel:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // API endpoint to get App Access Token (Client Credentials flow) for bot
 app.get('/api/bot/token', async (req, res) => {
   try {

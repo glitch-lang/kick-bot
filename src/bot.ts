@@ -599,6 +599,7 @@ export class KickBot {
   // Connect to any channel (for !setupchat)
   private async connectToAnyChannel(channelSlug: string) {
     if (this.listeners.has(channelSlug)) {
+      console.log(`Already connected to channel: ${channelSlug}`);
       return; // Already connected
     }
     
@@ -617,6 +618,11 @@ export class KickBot {
     
     // Connect via Kick API (now async)
     await kickAPI.connectToChat(channelSlug, onMessage);
+  }
+
+  // Public method to connect to channel for setup (called from API)
+  async connectToChannelForSetup(channelSlug: string): Promise<void> {
+    await this.connectToAnyChannel(channelSlug);
   }
   
   // Public method to handle incoming chat messages (called from WebSocket or API)
