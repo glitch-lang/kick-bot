@@ -23,61 +23,107 @@ app.use(express.static(path.join(__dirname, '../public')));
 // Initialize bot instance (will be started after DB init)
 const bot = new KickBot();
 
-// Handle uncaught errors to prevent crashes
+// Handle uncaught errors to prevent crashes - NEVER EXIT
 process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error);
-  // Don't exit - let Railway handle it
+  console.error('Stack:', error.stack);
+  // CRITICAL: Don't exit - keep the server running
+  // Railway will restart if needed, but we should stay alive
 });
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  // Don't exit - let Railway handle it
+  // CRITICAL: Don't exit - keep the server running
 });
+
+// Handle SIGTERM gracefully (Railway sends this)
+process.on('SIGTERM', () => {
+  console.log('Received SIGTERM, but keeping server alive...');
+  // Don't exit - Railway might be checking health
+});
+
+process.on('SIGINT', () => {
+  console.log('Received SIGINT, but keeping server alive...');
+  // Don't exit immediately
+});
+
+// Keep process alive - prevent accidental exits
+const keepAlive = setInterval(() => {
+  // Just keep the process running
+}, 30000); // Every 30 seconds
 
 // Initialize database and bot
 async function startServer() {
   try {
     console.log('Starting server initialization...');
+    console.log(`PORT: ${PORT}`);
+    console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
     
     // Start the HTTP server FIRST (Railway needs this immediately)
     // Listen on 0.0.0.0 to accept connections from Railway
     const server = app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server running on http://0.0.0.0:${PORT}`);
-      console.log(`Server is ready to accept connections`);
+      console.log(`✅ Server running on http://0.0.0.0:${PORT}`);
+      console.log(`✅ Server is ready to accept connections`);
+      console.log(`✅ Health check available at http://0.0.0.0:${PORT}/health`);
     });
     
-    // Keep server alive
+    // Keep server alive - prevent timeouts
     server.keepAliveTimeout = 65000;
     server.headersTimeout = 66000;
     
+    // Prevent server from closing
+    server.on('close', () => {
+      console.warn('⚠️ Server closed event - this should not happen');
+    });
+    
+    server.on('error', (error: any) => {
+      console.error('Server error:', error);
+      // Don't exit - try to keep running
+    });
+    
     // Initialize database in background (non-blocking)
     db.initDatabase().then(() => {
-      console.log('Database initialized successfully');
+      console.log('✅ Database initialized successfully');
       
       // Then start bot in background (non-blocking)
       bot.start().then(() => {
-        console.log('Bot started successfully');
-      }).catch((error) => {
-        console.error('Bot startup error (non-fatal):', error);
-        console.error('Bot error details:', error.message);
+        console.log('✅ Bot started successfully');
+      }).catch((error: any) => {
+        console.error('⚠️ Bot startup error (non-fatal):', error);
+        console.error('Bot error details:', error?.message);
         // Don't crash the server if bot fails to start
       });
-    }).catch((error) => {
-      console.error('Database initialization error (non-fatal):', error);
-      console.error('Database error details:', error.message);
+    }).catch((error: any) => {
+      console.error('⚠️ Database initialization error (non-fatal):', error);
+      console.error('Database error details:', error?.message);
       // Don't crash the server if database fails
     });
     
+    // Return server to keep reference alive
+    return server;
+    
   } catch (error: any) {
-    console.error('Failed to start server:', error);
-    console.error('Server error details:', error.message);
-    console.error('Server error stack:', error.stack);
-    // Don't exit - Railway will restart
+    console.error('❌ Failed to start server:', error);
+    console.error('Server error details:', error?.message);
+    console.error('Server error stack:', error?.stack);
+    // CRITICAL: Don't exit or throw - keep process alive
+    // Return null but don't crash
+    return null;
   }
 }
 
-// Start server
-startServer();
+// Start server and keep reference
+let serverInstance: any = null;
+startServer().then((server) => {
+  serverInstance = server;
+  console.log('✅ Server startup completed');
+}).catch((error: any) => {
+  console.error('❌ Server startup promise rejected:', error);
+  // Don't exit - keep process alive
+});
+
+// Keep process alive forever
+console.log('✅ Process started, keeping alive...');
 
 // OAuth Routes
 app.get('/auth/kick', (req, res) => {
