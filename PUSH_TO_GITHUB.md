@@ -70,4 +70,4 @@ Then you can:
 
 ---
 
-**Your GitHub token from earlier: `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`**
+**Note:** Never commit GitHub tokens or secrets to the repository. Use environment variables or secure credential storage instead.
