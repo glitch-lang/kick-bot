@@ -19,8 +19,11 @@ console.log(`Using PORT: ${PORT}`);
 
 // CRITICAL: Health check MUST be FIRST - before ANY middleware
 // Railway checks this immediately on startup - it must respond instantly
+// This endpoint has ZERO dependencies - responds immediately
 app.get('/health', (req, res) => {
-  res.status(200).setHeader('Content-Type', 'text/plain').send('OK');
+  // No async, no database, no bot - just respond immediately
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('OK');
 });
 
 app.get('/api/health', (req, res) => {
