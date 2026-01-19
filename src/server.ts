@@ -660,6 +660,14 @@ app.post('/api/bot/connect', async (req, res) => {
       return res.status(400).json({ error: 'Missing channelSlug' });
     }
     
+    // Check if bot is started
+    if (!bot.isBotStarted()) {
+      return res.status(503).json({ 
+        error: 'Bot is not started yet. Please wait a moment and try again.',
+        retryAfter: 5
+      });
+    }
+    
     // Connect bot to channel (will listen for !setupchat)
     await bot.connectToChannelForSetup(channelSlug);
     
@@ -670,7 +678,7 @@ app.post('/api/bot/connect', async (req, res) => {
     });
   } catch (error: any) {
     console.error('Error connecting bot to channel:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: error.message || 'Failed to connect bot to channel' });
   }
 });
 

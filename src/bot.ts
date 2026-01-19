@@ -11,6 +11,7 @@ interface ChatListener {
 export class KickBot {
   private listeners: Map<string, ChatListener> = new Map();
   private pollingInterval: NodeJS.Timeout | null = null;
+  private isStarted: boolean = false;
 
   async start() {
     console.log('Starting Kick Bot...');
@@ -25,6 +26,9 @@ export class KickBot {
     setInterval(() => {
       db.cleanupExpiredCooldowns();
     }, 60000); // Every minute
+    
+    this.isStarted = true;
+    console.log('Kick Bot started and ready');
   }
 
   private async loadStreamers() {
@@ -622,7 +626,15 @@ export class KickBot {
 
   // Public method to connect to channel for setup (called from API)
   async connectToChannelForSetup(channelSlug: string): Promise<void> {
+    if (!this.isStarted) {
+      throw new Error('Bot is not started yet. Please wait for bot to initialize.');
+    }
     await this.connectToAnyChannel(channelSlug);
+  }
+  
+  // Check if bot is started
+  isBotStarted(): boolean {
+    return this.isStarted;
   }
   
   // Public method to handle incoming chat messages (called from WebSocket or API)
