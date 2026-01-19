@@ -12,7 +12,10 @@ import { KickBot } from './bot';
 dotenv.config();
 
 const app = express();
+// CRITICAL: Railway assigns PORT dynamically - MUST use process.env.PORT
 const PORT = parseInt(process.env.PORT || '3000', 10);
+console.log(`PORT from environment: ${process.env.PORT || 'not set, using 3000'}`);
+console.log(`Using PORT: ${PORT}`);
 
 app.use(cors());
 app.use(cookieParser());
@@ -89,11 +92,13 @@ async function startServer() {
     console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
     
     // Start the HTTP server FIRST (Railway needs this immediately)
-    // Listen on 0.0.0.0 to accept connections from Railway
+    // CRITICAL: Must listen on 0.0.0.0 (not localhost) so Railway can reach it
+    // CRITICAL: Must use process.env.PORT (Railway assigns this dynamically)
     const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`✅ Server running on http://0.0.0.0:${PORT}`);
       console.log(`✅ Server is ready to accept connections`);
       console.log(`✅ Health check available at http://0.0.0.0:${PORT}/health`);
+      console.log(`✅ Railway can now reach the server on port ${PORT}`);
     });
     
     // Keep server alive - prevent timeouts
