@@ -217,16 +217,9 @@ export class KickBot {
       return;
     }
     
-    // Check if target streamer is online
+    // Check if target streamer is online (just for info, still send message)
     const isLive = await kickAPI.isStreamerLive(targetStreamer.channel_name);
-    if (!isLive) {
-      await this.sendMessage(
-        fromStreamer.channel_name,
-        fromStreamer.access_token,
-        `@${userId} ${targetStreamer.username} is currently offline. Use !online to check who's live!`
-      );
-      return;
-    }
+    const offlineNote = !isLive ? ' (Note: Streamer is currently offline)' : '';
     
     // Create message request
     const requestId = await db.createMessageRequest({
@@ -254,7 +247,7 @@ export class KickBot {
     await this.sendMessage(
       fromStreamer.channel_name,
       fromStreamer.access_token,
-      `@${userId} ✅ Message sent to ${targetStreamer.username}! They can respond with !respond ${requestId} <message> (Cooldown: ${cooldownText})`
+      `@${userId} ✅ Message sent to ${targetStreamer.username}${offlineNote}! They can respond with !reply <message> (Cooldown: ${cooldownText})`
     );
   }
 
@@ -439,16 +432,9 @@ export class KickBot {
       return;
     }
     
-    // Check if target streamer is online
+    // Check if target streamer is online (just for info, still send message)
     const isLive = await kickAPI.isStreamerLive(targetStreamer.channel_name);
-    if (!isLive) {
-      await this.sendMessage(
-        fromStreamer.channel_name,
-        fromStreamer.access_token,
-        `@${userId} ${targetStreamer.username} is currently offline. Use !streamers or !online to check who's live!`
-      );
-      return;
-    }
+    const offlineNote = !isLive ? ' (Note: Streamer is currently offline)' : '';
     
     // Create message request (command_id can be null now)
     const requestId = await db.createMessageRequest({
@@ -480,7 +466,7 @@ export class KickBot {
     await this.sendMessage(
       fromStreamer.channel_name,
       fromStreamer.access_token,
-      `@${userId} ✅ Message sent to ${targetStreamer.username}! They can respond with !respond ${requestId} <message> (Cooldown: ${cooldownText})`
+      `@${userId} ✅ Message sent to ${targetStreamer.username}${offlineNote}! They can respond with !reply <message> (Cooldown: ${cooldownText})`
     );
   }
   
