@@ -230,12 +230,20 @@ export async function createCommand(data: Omit<Command, 'id' | 'created_at'>): P
 }
 
 export async function createMessageRequest(data: Omit<MessageRequest, 'id' | 'created_at' | 'status' | 'responded_at'>): Promise<number> {
-  const result = await dbRun(
-    `INSERT INTO message_requests (from_user, from_channel, to_streamer_id, message, command_id, status)
-     VALUES (?, ?, ?, ?, ?, 'pending')`,
-    [data.from_user, data.from_channel, data.to_streamer_id, data.message, data.command_id]
-  );
-  return (result as any).lastID;
+  return new Promise((resolve, reject) => {
+    db.run(
+      `INSERT INTO message_requests (from_user, from_channel, to_streamer_id, message, command_id, status)
+       VALUES (?, ?, ?, ?, ?, 'pending')`,
+      [data.from_user, data.from_channel, data.to_streamer_id, data.message, data.command_id],
+      function(err) {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(this.lastID);
+        }
+      }
+    );
+  });
 }
 
 export async function markRequestRefunded(requestId: number) {
