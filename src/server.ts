@@ -1568,6 +1568,55 @@ app.post('/api/admin/delete-streamer', async (req, res) => {
   }
 });
 
+// Admin endpoint to manually register a channel (bypass OAuth issues)
+app.post('/api/admin/register-channel', async (req, res) => {
+  try {
+    const { password, channel_name } = req.body;
+    const adminPassword = process.env.ADMIN_PASSWORD || 'changeme123';
+    
+    if (password !== adminPassword) {
+      return res.status(401).json({ error: 'Invalid password' });
+    }
+    
+    if (!channel_name) {
+      return res.status(400).json({ error: 'Missing channel_name' });
+    }
+    
+    // Get channel info from Kick's public API
+    const channelInfo = await kickAPI.getChannelInfo(channel_name);
+    
+    if (!channelInfo) {
+      return res.status(404).json({ error: 'Channel not found on Kick' });
+    }
+    
+    // Create streamer entry (using bot token for now - they'll need to auth later for full features)
+    const streamerId = await db.createStreamer({
+      username: channelInfo.user?.username || channel_name,
+      kick_user_id: channelInfo.user?.id?.toString() || '0',
+      access_token: process.env.BOT_ACCESS_TOKEN || '',
+      refresh_token: '',
+      channel_name: channel_name,
+      cooldown_seconds: 60,
+      is_active: 1,
+    });
+    
+    // Start listening to their chat
+    if (bot) {
+      await bot.stop();
+      await bot.start();
+    }
+    
+    res.json({ 
+      success: true,
+      streamer_id: streamerId,
+      channel_name: channel_name,
+      message: `Channel ${channel_name} registered! Bot will now listen to chat. Test with !ping in your chat.`
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Discord Bot Integration Endpoints
 app.post('/api/discord/message', async (req, res) => {
   try {
