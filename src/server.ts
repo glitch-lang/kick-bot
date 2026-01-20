@@ -979,9 +979,20 @@ app.post('/api/bot/connect', async (req, res) => {
 });
 
 // API endpoint to check bot connection status
-// Test endpoint to send a message using OAuth token (GET version for dashboard)
+// ADMIN ONLY: Test endpoint to send a message using OAuth token (GET version for dashboard)
 app.get('/api/bot/test-send', async (req, res) => {
   try {
+    // SECURITY: Require admin password
+    const adminPassword = process.env.ADMIN_PASSWORD || 'changeme123';
+    const providedPassword = req.headers['x-admin-password'] as string;
+    
+    if (providedPassword !== adminPassword) {
+      return res.status(401).json({ 
+        error: 'Unauthorized',
+        message: 'Admin password required. Add header: x-admin-password'
+      });
+    }
+    
     const { channel, message } = req.query;
     
     if (!channel || !message) {
@@ -1045,9 +1056,20 @@ app.get('/api/bot/test-send', async (req, res) => {
   }
 });
 
-// Test endpoint to send a message using OAuth token (POST version)
+// ADMIN ONLY: Test endpoint to send a message using OAuth token (POST version)
 app.post('/api/bot/test-send', async (req, res) => {
   try {
+    // SECURITY: Require admin password
+    const adminPassword = process.env.ADMIN_PASSWORD || 'changeme123';
+    const providedPassword = req.headers['x-admin-password'] as string;
+    
+    if (providedPassword !== adminPassword) {
+      return res.status(401).json({ 
+        error: 'Unauthorized',
+        message: 'Admin password required. Add header: x-admin-password'
+      });
+    }
+    
     const { channelSlug, message } = req.body;
     
     if (!channelSlug || !message) {

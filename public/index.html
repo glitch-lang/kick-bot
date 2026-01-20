@@ -220,39 +220,27 @@
         </div>
         
         <div class="card">
+            <h2>📖 How to Use CrossTalk</h2>
             <div class="info-box">
-                <strong>ℹ️ Note:</strong> The bot can send messages via API but cannot listen to chat commands until you connect your channel above.
+                <strong>✅ Your channel is now registered!</strong> All commands work directly in your Kick chat.
             </div>
             
-            <h2>Send Message to Chat</h2>
-            
-            <div class="form-group">
-                <label for="channel">Channel Name</label>
-                <input type="text" id="channel" value="realglitchdyeet" placeholder="Enter channel name">
+            <h3 style="color: #667eea; margin-top: 20px;">Available Commands:</h3>
+            <div style="line-height: 2.2;">
+                <p><code style="background: #f0f0f0; padding: 5px 10px; border-radius: 5px;">!ping</code> - Check if bot is online</p>
+                <p><code style="background: #f0f0f0; padding: 5px 10px; border-radius: 5px;">!help</code> - Show all commands</p>
+                <p><code style="background: #f0f0f0; padding: 5px 10px; border-radius: 5px;">!online</code> - See which streamers are live</p>
+                <p><code style="background: #f0f0f0; padding: 5px 10px; border-radius: 5px;">!streamers</code> - List all registered streamers</p>
+                <p><code style="background: #f0f0f0; padding: 5px 10px; border-radius: 5px;">!channelname message</code> - Send message to another streamer</p>
+                <p><code style="background: #f0f0f0; padding: 5px 10px; border-radius: 5px;">!reply message</code> - Reply to most recent message</p>
             </div>
             
-            <div class="form-group">
-                <label for="message">Message</label>
-                <textarea id="message" placeholder="Type your message here...">Hello from CrossTalkBot! 🎉</textarea>
-            </div>
-            
-            <div class="button-group">
-                <button class="btn-primary" onclick="sendMessage()">📤 Send Message</button>
-                <button class="btn-secondary" onclick="clearForm()">🗑️ Clear</button>
-            </div>
-            
-            <div id="response"></div>
-        </div>
-        
-        <div class="card">
-            <h2>Quick Messages</h2>
-            <div class="quick-messages">
-                <button class="quick-btn" onclick="sendQuickMessage('Stream starting soon! 🚀')">Stream Starting</button>
-                <button class="quick-btn" onclick="sendQuickMessage('Thanks for watching! ❤️')">Thank You</button>
-                <button class="quick-btn" onclick="sendQuickMessage('Remember to follow! 👍')">Follow Reminder</button>
-                <button class="quick-btn" onclick="sendQuickMessage('Taking a quick break, BRB! ⏸️')">BRB</button>
-                <button class="quick-btn" onclick="sendQuickMessage('Welcome to the stream! 👋')">Welcome</button>
-                <button class="quick-btn" onclick="sendQuickMessage('Don\'t forget to drop a like! 💜')">Drop a Like</button>
+            <h3 style="color: #667eea; margin-top: 20px;">Example:</h3>
+            <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin-top: 10px;">
+                <p style="margin: 5px 0;"><strong>You:</strong> <code>!partnerjohn Hey! Want to collab?</code></p>
+                <p style="margin: 5px 0;"><strong>Bot in partnerjohn's chat:</strong> <code>📨 Message from @you: Hey! Want to collab?</code></p>
+                <p style="margin: 5px 0;"><strong>partnerjohn:</strong> <code>!reply Sure! Let's do it!</code></p>
+                <p style="margin: 5px 0;"><strong>Bot in your chat:</strong> <code>📨 Reply from @partnerjohn: Sure! Let's do it!</code></p>
             </div>
         </div>
         
@@ -269,52 +257,7 @@
     </div>
     
     <script>
-        async function sendMessage() {
-            const channel = document.getElementById('channel').value;
-            const message = document.getElementById('message').value;
-            const responseDiv = document.getElementById('response');
-            
-            if (!channel || !message) {
-                showResponse('Please fill in all fields', 'error');
-                return;
-            }
-            
-            responseDiv.style.display = 'block';
-            responseDiv.className = '';
-            responseDiv.innerHTML = '⏳ Sending message...';
-            
-            try {
-                const response = await fetch(`/api/bot/test-send?channel=${encodeURIComponent(channel)}&message=${encodeURIComponent(message)}`);
-                const data = await response.json();
-                
-                if (response.ok) {
-                    showResponse('✅ Message sent successfully!', 'success');
-                } else {
-                    showResponse('❌ Failed to send message: ' + (data.error || 'Unknown error'), 'error');
-                }
-            } catch (error) {
-                showResponse('❌ Network error: ' + error.message, 'error');
-            }
-        }
-        
-        function sendQuickMessage(msg) {
-            document.getElementById('message').value = msg;
-            sendMessage();
-        }
-        
-        function clearForm() {
-            document.getElementById('message').value = '';
-            document.getElementById('response').style.display = 'none';
-        }
-        
-        function showResponse(message, type) {
-            const responseDiv = document.getElementById('response');
-            responseDiv.style.display = 'block';
-            responseDiv.className = type;
-            responseDiv.innerHTML = message;
-        }
-        
-        // Test connection on load
+        // Test bot connection on page load
         window.onload = async function() {
             try {
                 const response = await fetch('/health');
