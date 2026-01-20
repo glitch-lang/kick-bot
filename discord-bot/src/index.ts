@@ -139,6 +139,7 @@ async function handleKickMessage(message: any) {
       message: messageText,
       discord_channel_id: message.channel.id,
       webhook_url: webhookUrl, // Send the webhook URL to the backend
+      discord_user_id: message.author.id, // Send the user ID for proper @mentions
     });
     
     if (response.data.success) {

@@ -737,9 +737,10 @@ export class KickBot {
       try {
         const discordWebhookUrl = request.discord_webhook_url;
         if (discordWebhookUrl) {
-          // Send via Discord webhook
+          // Send via Discord webhook with proper mention
+          const mentionText = request.discord_user_id ? `<@${request.discord_user_id}>` : `@${request.from_user}`;
           await kickAPI.sendDiscordWebhook(discordWebhookUrl, {
-            content: `💬 **${streamer.username}** replied to @${request.from_user}:\n${responseMessage}`,
+            content: `💬 **${streamer.username}** replied to ${mentionText}:\n${responseMessage}`,
             username: 'CrossTalk',
             avatar_url: 'https://i.imgur.com/4M34hi2.png'
           });
@@ -869,9 +870,10 @@ export class KickBot {
       try {
         const discordWebhookUrl = request.discord_webhook_url;
         if (discordWebhookUrl) {
-          // Send via Discord webhook
+          // Send via Discord webhook with proper mention
+          const mentionText = request.discord_user_id ? `<@${request.discord_user_id}>` : `@${request.from_user}`;
           await kickAPI.sendDiscordWebhook(discordWebhookUrl, {
-            content: `💬 **${streamer.username}** replied to @${request.from_user}:\n${responseMessage}`,
+            content: `💬 **${streamer.username}** replied to ${mentionText}:\n${responseMessage}`,
             username: 'CrossTalk',
             avatar_url: 'https://i.imgur.com/4M34hi2.png'
           });

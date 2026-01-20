@@ -1562,7 +1562,7 @@ app.post('/api/admin/register-channel', async (req, res) => {
 // Discord Bot Integration Endpoints
 app.post('/api/discord/message', async (req, res) => {
   try {
-    const { from_user, from_platform, to_streamer, message, discord_channel_id, webhook_url } = req.body;
+    const { from_user, from_platform, to_streamer, message, discord_channel_id, webhook_url, discord_user_id } = req.body;
     
     if (!from_user || !to_streamer || !message) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -1588,6 +1588,7 @@ app.post('/api/discord/message', async (req, res) => {
       command_id: null,
       discord_channel_id: discord_channel_id,
       discord_webhook_url: webhook_url,
+      discord_user_id: discord_user_id,
     });
     
     // Send message to Kick chat
