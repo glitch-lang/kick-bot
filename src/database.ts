@@ -123,6 +123,17 @@ export async function initDatabase() {
     )
   `);
 
+  // Migration: Add discord_channel_id column if it doesn't exist
+  try {
+    await dbRun(`ALTER TABLE message_requests ADD COLUMN discord_channel_id TEXT`);
+    console.log('✅ Migration: Added discord_channel_id column to message_requests');
+  } catch (error: any) {
+    // Column already exists or other error - that's okay
+    if (!error.message.includes('duplicate column')) {
+      console.log('discord_channel_id column already exists or migration not needed');
+    }
+  }
+
   // Cooldowns table
   await dbRun(`
     CREATE TABLE IF NOT EXISTS cooldowns (
