@@ -1,7 +1,8 @@
-import { Client, GatewayIntentBits, EmbedBuilder, ChannelType, TextChannel } from 'discord.js';
+import { Client, GatewayIntentBits, EmbedBuilder, ChannelType, TextChannel, VoiceChannel } from 'discord.js';
 import axios from 'axios';
 import * as dotenv from 'dotenv';
 import { Database } from './database';
+import { StreamManager } from './stream-manager';
 
 dotenv.config();
 
@@ -10,11 +11,15 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildVoiceStates,
   ],
 });
 
 const db = new Database();
 const KICK_API_URL = process.env.KICK_BOT_API_URL || 'https://web-production-56232.up.railway.app';
+
+// Initialize StreamManager for voice streaming
+const streamManager = new StreamManager(KICK_API_URL);
 
 // Track which Discord channels are watching which Kick streams
 const watchParties = new Map<string, string>(); // channelId -> kickChannelName
@@ -56,6 +61,24 @@ client.on('messageCreate', async (message) => {
   // Command: !kick unwatch
   if (content.startsWith('!kick unwatch')) {
     await handleUnwatchCommand(message);
+    return;
+  }
+  
+  // Command: !kick stream <streamer> (voice streaming)
+  if (content.startsWith('!kick stream ')) {
+    await handleStreamCommand(message);
+    return;
+  }
+  
+  // Command: !kick stopstream
+  if (content.startsWith('!kick stopstream')) {
+    await handleStopStreamCommand(message);
+    return;
+  }
+  
+  // Command: !kick streams (active voice streams)
+  if (content.startsWith('!kick streams')) {
+    await handleActiveStreamsCommand(message);
     return;
   }
   

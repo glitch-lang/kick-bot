@@ -713,6 +713,12 @@ export class KickBot {
       return;
     }
     
+    // Debug logging
+    console.log(`🔍 Respond debug - Request ID: ${requestId}`);
+    console.log(`   from_channel: "${request.from_channel}"`);
+    console.log(`   discord_channel_id: "${request.discord_channel_id}"`);
+    console.log(`   from_user: "${request.from_user}"`);
+    
     if (request.status !== 'pending') {
       await this.sendMessage(
         streamer.channel_name,
@@ -722,7 +728,48 @@ export class KickBot {
       return;
     }
     
-    // Get the original sender's streamer info
+    // Mark request as responded
+    await db.markRequestResponded(requestId);
+    
+    // Check if message came from Discord
+    if (request.from_channel === 'discord' && request.discord_channel_id) {
+      // For Discord messages, we need to send via the Discord bot's webhook
+      try {
+        const discordWebhookUrl = process.env.DISCORD_WEBHOOK_URL;
+        if (discordWebhookUrl) {
+          // Send via Discord webhook
+          await kickAPI.sendDiscordWebhook(discordWebhookUrl, {
+            content: `💬 **${streamer.username}** replied to @${request.from_user}:\n${responseMessage}`,
+            username: 'CrossTalk',
+            avatar_url: 'https://i.imgur.com/4M34hi2.png'
+          });
+          
+          // Confirm to responder
+          await this.sendMessage(
+            streamer.channel_name,
+            streamer.access_token,
+            `@${message.user.username} ✅ Reply sent to @${request.from_user} on Discord!`
+          );
+        } else {
+          console.log(`Discord reply stored for channel ${request.discord_channel_id}: ${responseMessage}`);
+          await this.sendMessage(
+            streamer.channel_name,
+            streamer.access_token,
+            `@${message.user.username} ⚠️ Reply saved, but Discord webhook not configured.`
+          );
+        }
+      } catch (error: any) {
+        console.error('Error sending Discord reply:', error);
+        await this.sendMessage(
+          streamer.channel_name,
+          streamer.access_token,
+          `@${message.user.username} ❌ Failed to send reply to Discord: ${error.message}`
+        );
+      }
+      return;
+    }
+    
+    // Get the original sender's streamer info (for Kick-to-Kick messages)
     const fromStreamer = await db.getStreamerByUsername(request.from_channel);
     if (!fromStreamer) {
       await this.sendMessage(
@@ -732,9 +779,6 @@ export class KickBot {
       );
       return;
     }
-    
-    // Mark request as responded
-    await db.markRequestResponded(requestId);
     
     // Send response back to original channel with clear sender information
     const responseText = `💬 Response from @${streamer.username} (${streamer.channel_name}): "${responseMessage}" | Request ID: ${requestId}`;
@@ -748,7 +792,7 @@ export class KickBot {
     await this.sendMessage(
       streamer.channel_name,
       streamer.access_token,
-      `@${message.user.username} Response sent to @${request.from_user} in ${fromStreamer.channel_name}!`
+      `@${message.user.username} ✅ Response sent to @${request.from_user} in ${fromStreamer.channel_name}!`
     );
   }
 
@@ -800,6 +844,12 @@ export class KickBot {
       );
       return;
     }
+    
+    // Debug logging
+    console.log(`🔍 Reply debug - Request ID: ${lastRequestId}`);
+    console.log(`   from_channel: "${request.from_channel}"`);
+    console.log(`   discord_channel_id: "${request.discord_channel_id}"`);
+    console.log(`   from_user: "${request.from_user}"`);
     
     if (request.status !== 'pending') {
       await this.sendMessage(
