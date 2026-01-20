@@ -516,57 +516,79 @@ app.get('/auth/kick/callback', async (req, res) => {
       console.error('Full token response:', JSON.stringify(tokens, null, 2));
       console.error('Introspect data:', JSON.stringify(introspectData, null, 2));
       
-      // Store token temporarily and redirect to a manual completion page
-      // For now, show error but with more helpful info
-      // Store last attempt for debugging
-      lastRegistrationAttempt = {
-        timestamp: new Date().toISOString(),
-        tokenReceived: !!tokens.access_token,
-        tokenPreview: tokens.access_token?.substring(0, 30) + '...',
-        tokenType: (tokens as any).token_type,
-        scopes: (tokens as any).scope,
-        introspectData: introspectData,
-        error: 'All user info endpoints failed'
-      };
-      
-      // Store token temporarily in a secure way for manual completion
-      // Generate a temporary registration token
-      const crypto = require('crypto');
-      const tempToken = crypto.randomBytes(32).toString('hex');
-      
-      // Store in memory (in production, use Redis or database)
-      if (!(global as any).tempRegistrations) {
-        (global as any).tempRegistrations = new Map();
+      // For bot account, use the BOT_USERNAME from environment
+      const botUsername = process.env.BOT_USERNAME;
+      if (botUsername) {
+        console.log(`🤖 Using BOT_USERNAME from environment: ${botUsername}`);
+        userInfo = {
+          id: Date.now(), // Temporary ID
+          username: botUsername,
+          slug: botUsername.toLowerCase()
+        };
+      } else {
+        // Store token temporarily and redirect to a manual completion page
+        // Store last attempt for debugging
+        lastRegistrationAttempt = {
+          timestamp: new Date().toISOString(),
+          tokenReceived: !!tokens.access_token,
+          tokenPreview: tokens.access_token?.substring(0, 30) + '...',
+          tokenType: (tokens as any).token_type,
+          scopes: (tokens as any).scope,
+          introspectData: introspectData,
+          error: 'All user info endpoints failed'
+        };
+        
+        // Store token temporarily in a secure way for manual completion
+        // Generate a temporary registration token
+        const crypto = require('crypto');
+        const tempToken = crypto.randomBytes(32).toString('hex');
+        
+        // Store in memory (in production, use Redis or database)
+        if (!(global as any).tempRegistrations) {
+          (global as any).tempRegistrations = new Map();
+        }
+        (global as any).tempRegistrations.set(tempToken, {
+          access_token: tokens.access_token,
+          refresh_token: tokens.refresh_token,
+          expires_at: Date.now() + 600000, // 10 minutes
+        });
+        
+        // Update last attempt for debugging
+        lastRegistrationAttempt.error = 'All user info endpoints failed - redirecting to manual registration';
+        
+        // Redirect to manual completion page
+        return res.redirect(`/register/manual?token=${tempToken}`);
       }
-      (global as any).tempRegistrations.set(tempToken, {
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
-        expires_at: Date.now() + 600000, // 10 minutes
-      });
-      
-      // Update last attempt for debugging
-      lastRegistrationAttempt.error = 'All user info endpoints failed - redirecting to manual registration';
-      
-      // Redirect to manual completion page
-      return res.redirect(`/register/manual?token=${tempToken}`);
     }
     
     console.log('✅ User info retrieved successfully:', userInfo);
     
-    // Check if streamer already exists
+    // Check if streamer already exists (try by username if ID is temporary)
     let streamer = await db.getStreamerByKickId(userInfo.id.toString());
+    if (!streamer) {
+      // Try by username
+      const allStreamers = await db.getAllActiveStreamers();
+      streamer = allStreamers.find(s => s.username.toLowerCase() === userInfo.username.toLowerCase()) || null;
+    }
     
     if (streamer) {
       // Update tokens
+      console.log(`Updating existing streamer: ${streamer.username}`);
       await db.updateStreamerToken(streamer.id, tokens.access_token, tokens.refresh_token);
     } else {
-      // Get channel info
-      const channelInfo = await kickAPI.getChannelInfo(userInfo.slug);
-      if (!channelInfo) {
-        return res.redirect('/?error=channel_info');
+      // Get channel info (optional - may fail for bot accounts)
+      let chatroomId: number | undefined;
+      try {
+        const channelInfo = await kickAPI.getChannelInfo(userInfo.slug);
+        if (channelInfo) {
+          chatroomId = channelInfo.chatroom_id;
+        }
+      } catch (error) {
+        console.warn('Could not get channel info, proceeding without it');
       }
       
       // Create new streamer
+      console.log(`Creating new streamer: ${userInfo.username}`);
       const streamerId = await db.createStreamer({
         username: userInfo.username,
         kick_user_id: userInfo.id.toString(),
@@ -604,7 +626,9 @@ app.get('/auth/kick/callback', async (req, res) => {
     
     // Subscribe to chat events for this channel
     try {
+      // Try to get channel info for chatroom ID
       const channelInfo = await kickAPI.getChannelInfo(userInfo.slug);
+      
       if (channelInfo && channelInfo.chatroom_id) {
         const chatroomId = channelInfo.chatroom_id;
         const webhookUrl = `${process.env.WEBHOOK_BASE_URL || 'http://localhost:3000'}/webhooks/kick`;
@@ -629,6 +653,10 @@ app.get('/auth/kick/callback', async (req, res) => {
           console.error('⚠️ Failed to subscribe to chat events:', subscriptionResult.error);
           console.error('Bot will still work for sending messages, but cannot listen to chat');
         }
+      } else {
+        console.warn('⚠️ Could not get chatroom ID, skipping webhook subscription');
+        console.warn('Bot will still work for sending messages');
+        console.warn('To enable listening, the bot needs to be used on a specific channel');
       }
     } catch (error: any) {
       console.error('⚠️ Error subscribing to chat events:', error.message);
