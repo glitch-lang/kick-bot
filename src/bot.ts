@@ -828,9 +828,53 @@ export class KickBot {
         case 'help':
           await kickAPI.sendChatMessage(
             channelSlug,
-            `@${message.user.username} Available commands: !ping, !help, !commands`,
+            `@${message.user.username} Available commands: !ping, !help, !commands, !send, !uptime`,
             token
           );
+          break;
+          
+        case 'send':
+          // Cross-channel message: !send channelname message here
+          if (args.length < 2) {
+            await kickAPI.sendChatMessage(
+              channelSlug,
+              `@${message.user.username} Usage: !send <channel> <message>`,
+              token
+            );
+            break;
+          }
+          
+          const targetChannel = args[0].toLowerCase();
+          const crossMessage = args.slice(1).join(' ');
+          
+          // Format the cross-chat message
+          const formattedMessage = `📨 Cross-chat from @${message.user.username} (${channelSlug}): ${crossMessage}`;
+          
+          try {
+            const success = await kickAPI.sendChatMessage(targetChannel, formattedMessage, token);
+            
+            if (success) {
+              await kickAPI.sendChatMessage(
+                channelSlug,
+                `@${message.user.username} ✅ Message sent to ${targetChannel}!`,
+                token
+              );
+              console.log(`✅ Cross-chat message sent from ${channelSlug} to ${targetChannel}`);
+            } else {
+              await kickAPI.sendChatMessage(
+                channelSlug,
+                `@${message.user.username} ❌ Failed to send message to ${targetChannel}. Channel may not exist.`,
+                token
+              );
+            }
+          } catch (error) {
+            console.error(`Failed to send cross-chat message:`, error);
+            await kickAPI.sendChatMessage(
+              channelSlug,
+              `@${message.user.username} ❌ Error sending message to ${targetChannel}`,
+              token
+            );
+          }
           break;
           
         case 'uptime':
