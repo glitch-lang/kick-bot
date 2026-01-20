@@ -12,6 +12,7 @@ export class KickBot {
   private listeners: Map<string, ChatListener> = new Map();
   private pollingInterval: NodeJS.Timeout | null = null;
   private isStarted: boolean = false;
+  private lastMessagePerChannel: Map<number, number> = new Map(); // streamer_id -> last_request_id
 
   async start() {
     try {
@@ -142,9 +143,15 @@ export class KickBot {
       return;
     }
     
-    // Handle !respond command
+    // Handle !respond command (with ID)
     if (content.startsWith('!respond')) {
       await this.handleRespondCommand(streamer, message, content);
+      return;
+    }
+    
+    // Handle !reply command (to most recent message)
+    if (content.startsWith('!reply')) {
+      await this.handleReplyCommand(streamer, message, content);
       return;
     }
     
@@ -452,11 +459,14 @@ export class KickBot {
       command_id: null, // No longer using command table
     });
     
+    // Track this as the last message for the target streamer
+    this.lastMessagePerChannel.set(targetStreamer.id, requestId);
+    
     // Set cooldown using target streamer's cooldown setting
     await db.setCooldown(userId, channel, cooldownKey, targetStreamer.cooldown_seconds || 60);
     
     // Send message to target streamer's chat
-    const notificationMessage = `📨 Message from @${userId} (${fromStreamer.channel_name} / ${fromStreamer.username}): "${messageText}" | ID: ${requestId} | Reply: !respond ${requestId} <message>`;
+    const notificationMessage = `📨 Message from @${userId} (${fromStreamer.channel_name} / ${fromStreamer.username}): "${messageText}" | ID: ${requestId} | Reply: !respond ${requestId} <message> OR !reply <message>`;
     await this.sendMessage(
       targetStreamer.channel_name,
       targetStreamer.access_token,
@@ -649,6 +659,94 @@ export class KickBot {
     );
   }
 
+  private async handleReplyCommand(
+    streamer: db.Streamer,
+    message: KickChatMessage,
+    content: string
+  ) {
+    const parts = content.split(' ');
+    if (parts.length < 2) {
+      await this.sendMessage(
+        streamer.channel_name,
+        streamer.access_token,
+        `@${message.user.username} Usage: !reply <message>`
+      );
+      return;
+    }
+    
+    const responseMessage = parts.slice(1).join(' ');
+    
+    if (!responseMessage) {
+      await this.sendMessage(
+        streamer.channel_name,
+        streamer.access_token,
+        `@${message.user.username} Please provide a message to reply with.`
+      );
+      return;
+    }
+    
+    // Get the last message ID for this streamer
+    const lastRequestId = this.lastMessagePerChannel.get(streamer.id);
+    
+    if (!lastRequestId) {
+      await this.sendMessage(
+        streamer.channel_name,
+        streamer.access_token,
+        `@${message.user.username} No recent messages to reply to. Use !respond <id> <message> for older messages.`
+      );
+      return;
+    }
+    
+    // Get the original request
+    const request = await db.getRequestById(lastRequestId);
+    if (!request || request.to_streamer_id !== streamer.id) {
+      await this.sendMessage(
+        streamer.channel_name,
+        streamer.access_token,
+        `@${message.user.username} Could not find the last message. Use !respond <id> <message> instead.`
+      );
+      return;
+    }
+    
+    if (request.status !== 'pending') {
+      await this.sendMessage(
+        streamer.channel_name,
+        streamer.access_token,
+        `@${message.user.username} You already responded to this message. Use !respond <id> <message> for specific messages.`
+      );
+      return;
+    }
+    
+    // Get the original sender's streamer info
+    const fromStreamer = await db.getStreamerByUsername(request.from_channel);
+    if (!fromStreamer) {
+      await this.sendMessage(
+        streamer.channel_name,
+        streamer.access_token,
+        `@${message.user.username} Could not find original sender's channel.`
+      );
+      return;
+    }
+    
+    // Mark request as responded
+    await db.markRequestResponded(lastRequestId);
+    
+    // Send response back to original channel
+    const responseText = `💬 Response from @${streamer.username} (${streamer.channel_name}): "${responseMessage}"`;
+    await this.sendMessage(
+      fromStreamer.channel_name,
+      fromStreamer.access_token,
+      `@${request.from_user} ${responseText}`
+    );
+    
+    // Confirm to responder
+    await this.sendMessage(
+      streamer.channel_name,
+      streamer.access_token,
+      `@${message.user.username} ✅ Reply sent to @${request.from_user} in ${fromStreamer.channel_name}!`
+    );
+  }
+
   // Get the best available bot token for a channel (OAuth token or bot token)
   private async getBotToken(channelSlug: string): Promise<string | null> {
     try {
@@ -828,7 +926,7 @@ export class KickBot {
         case 'help':
           await kickAPI.sendChatMessage(
             channelSlug,
-            `@${message.user.username} Available commands: !ping, !help, !commands, !send, !uptime`,
+            `@${message.user.username} Commands: !ping, !online, !streamers, !setupchat, !reply <msg>, !respond <id> <msg>, !channelname <msg>`,
             token
           );
           break;
