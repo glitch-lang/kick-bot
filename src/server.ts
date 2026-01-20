@@ -1591,8 +1591,8 @@ app.post('/api/admin/register-channel', async (req, res) => {
     
     // Create streamer entry (using bot token for now - they'll need to auth later for full features)
     const streamerId = await db.createStreamer({
-      username: channelInfo.user?.username || channel_name,
-      kick_user_id: channelInfo.user?.id?.toString() || '0',
+      username: channel_name,
+      kick_user_id: channelInfo.user_id?.toString() || channelInfo.id?.toString() || '0',
       access_token: process.env.BOT_ACCESS_TOKEN || '',
       refresh_token: '',
       channel_name: channel_name,
