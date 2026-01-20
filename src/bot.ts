@@ -120,6 +120,28 @@ export class KickBot {
       return;
     }
     
+    // Handle !ping command - works even without registration
+    if (content.startsWith('!ping')) {
+      const token = streamer?.access_token || process.env.BOT_ACCESS_TOKEN;
+      if (token) {
+        await kickAPI.sendChatMessage(channelSlug, `@${username} Pong! Bot is online! 🟢`, token);
+      }
+      return;
+    }
+    
+    // Handle !help command - works even without registration
+    if (content.startsWith('!help') || content.startsWith('!commands')) {
+      const token = streamer?.access_token || process.env.BOT_ACCESS_TOKEN;
+      if (token) {
+        await kickAPI.sendChatMessage(
+          channelSlug,
+          `@${username} Commands: !ping, !help, !online, !streamers, !setupchat, !reply <msg>, !respond <id> <msg>`,
+          token
+        );
+      }
+      return;
+    }
+    
     // Need a registered streamer for other commands
     if (!streamer) {
       // Try to find streamer by channel
