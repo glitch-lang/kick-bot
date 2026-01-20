@@ -520,10 +520,21 @@ export class KickBot {
     const cooldownKey = `streamer_${targetStreamer.id}`;
     const onCooldown = await db.checkCooldown(userId, channel, cooldownKey);
     if (onCooldown) {
+      const remainingSeconds = await db.getRemainingCooldown(userId, channel, cooldownKey);
+      const remainingMinutes = Math.floor(remainingSeconds / 60);
+      const remainingSecondsOnly = remainingSeconds % 60;
+      
+      let timeText = '';
+      if (remainingMinutes > 0) {
+        timeText = `${remainingMinutes}m ${remainingSecondsOnly}s`;
+      } else {
+        timeText = `${remainingSeconds}s`;
+      }
+      
       await this.sendMessage(
         fromStreamer.channel_name,
         fromStreamer.access_token,
-        `@${userId} You're on cooldown. Please wait before messaging ${targetStreamer.username} again.`
+        `@${userId} ⏰ Cooldown active! Please wait ${timeText} before messaging ${targetStreamer.username} again.`
       );
       return;
     }

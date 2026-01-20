@@ -293,6 +293,23 @@ export async function checkCooldown(userId: string, channel: string, commandId: 
   return cooldown !== null && cooldown !== undefined;
 }
 
+export async function getRemainingCooldown(userId: string, channel: string, commandId: number | string): Promise<number> {
+  const cooldown = await dbGet(
+    'SELECT expires_at FROM cooldowns WHERE user_id = ? AND channel = ? AND command_id = ? AND expires_at > datetime("now")',
+    [userId, channel, String(commandId)]
+  );
+  
+  if (!cooldown) {
+    return 0;
+  }
+  
+  const expiresAt = new Date(cooldown.expires_at).getTime();
+  const now = Date.now();
+  const remainingMs = expiresAt - now;
+  
+  return Math.max(0, Math.ceil(remainingMs / 1000)); // Return seconds remaining
+}
+
 export async function setCooldown(userId: string, channel: string, commandId: number | string, cooldownSeconds: number) {
   const expiresAt = new Date(Date.now() + cooldownSeconds * 1000).toISOString();
   await dbRun(
