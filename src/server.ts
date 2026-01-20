@@ -512,221 +512,26 @@ app.get('/auth/kick/callback', async (req, res) => {
       console.error('Token introspection error:', error.response?.status, error.response?.data || error.message);
     }
     
-    // Try to get user info from API
-    userInfo = await kickAPI.getUserInfo(tokens.access_token);
+    // SIMPLIFIED: Skip user info lookup entirely - just ask for channel name
+    console.log('📝 OAuth tokens received, storing temporarily for manual registration...');
     
-    // If still no user info, try alternative: use the token to make a test API call
-    // and see what endpoints actually work
-    if (!userInfo) {
-      console.log('Standard endpoints failed, trying alternative approaches...');
-      
-      // Try using the token with channel endpoints to see if token works at all
-      // We could potentially get user info from a different endpoint
-      try {
-        // Try getting current user's channels or profile
-        const testEndpoints = [
-          'https://kick.com/api/v1/channels/me',
-          'https://api.kick.com/v1/channels/me',
-          'https://kick.com/api/v1/profile',
-          'https://api.kick.com/v1/profile',
-        ];
-        
-        for (const endpoint of testEndpoints) {
-          try {
-            console.log(`Testing alternative endpoint: ${endpoint}`);
-            const testResponse = await axios.get(endpoint, {
-              headers: {
-                Authorization: `Bearer ${tokens.access_token}`,
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-              },
-              timeout: 10000,
-            });
-            console.log(`✅ ${endpoint} responded:`, JSON.stringify(testResponse.data, null, 2));
-            
-            // Check if this response contains user info
-            const data = testResponse.data;
-            if (data?.user?.id && data?.user?.username) {
-              userInfo = {
-                id: data.user.id,
-                username: data.user.username,
-                slug: data.user.slug || data.user.username.toLowerCase(),
-              };
-              console.log('✅ Found user info in alternative endpoint!');
-              break;
-            }
-          } catch (e: any) {
-            console.log(`❌ ${endpoint} failed:`, e.response?.status);
-          }
-        }
-      } catch (e) {
-        console.error('Alternative endpoint test failed:', e);
-      }
+    // Generate a temporary registration token
+    const crypto = require('crypto');
+    const tempToken = crypto.randomBytes(32).toString('hex');
+    
+    // Store in memory
+    if (!(global as any).tempRegistrations) {
+      (global as any).tempRegistrations = new Map();
     }
+    (global as any).tempRegistrations.set(tempToken, {
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      expires_at: Date.now() + 600000, // 10 minutes
+    });
     
-    // Last resort: Create a temporary registration that requires manual completion
-    if (!userInfo) {
-      console.error('Failed to get user info after trying all methods');
-      console.error('Token (first 30 chars):', tokens.access_token?.substring(0, 30) + '...');
-      console.error('Full token response:', JSON.stringify(tokens, null, 2));
-      console.error('Introspect data:', JSON.stringify(introspectData, null, 2));
-      
-      // For bot account, use the BOT_USERNAME from environment
-      const botUsername = process.env.BOT_USERNAME;
-      if (botUsername) {
-        console.log(`🤖 Using BOT_USERNAME from environment: ${botUsername}`);
-        userInfo = {
-          id: Date.now(), // Temporary ID
-          username: botUsername,
-          slug: botUsername.toLowerCase()
-        };
-      } else {
-        // Store token temporarily and redirect to a manual completion page
-        // Store last attempt for debugging
-        lastRegistrationAttempt = {
-          timestamp: new Date().toISOString(),
-          tokenReceived: !!tokens.access_token,
-          tokenPreview: tokens.access_token?.substring(0, 30) + '...',
-          tokenType: (tokens as any).token_type,
-          scopes: (tokens as any).scope,
-          introspectData: introspectData,
-          error: 'All user info endpoints failed'
-        };
-        
-        // Store token temporarily in a secure way for manual completion
-        // Generate a temporary registration token
-        const crypto = require('crypto');
-        const tempToken = crypto.randomBytes(32).toString('hex');
-        
-        // Store in memory (in production, use Redis or database)
-        if (!(global as any).tempRegistrations) {
-          (global as any).tempRegistrations = new Map();
-        }
-        (global as any).tempRegistrations.set(tempToken, {
-          access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token,
-          expires_at: Date.now() + 600000, // 10 minutes
-        });
-        
-        // Update last attempt for debugging
-        lastRegistrationAttempt.error = 'All user info endpoints failed - redirecting to manual registration';
-        
-        // Redirect to manual completion page
-        return res.redirect(`/register/manual?token=${tempToken}`);
-      }
-    }
-    
-    console.log('✅ User info retrieved successfully:', userInfo);
-    
-    // Check if streamer already exists (try by username if ID is temporary)
-    let streamer = await db.getStreamerByKickId(userInfo.id.toString());
-    if (!streamer) {
-      // Try by username
-      const allStreamers = await db.getAllActiveStreamers();
-      streamer = allStreamers.find(s => s.username.toLowerCase() === userInfo.username.toLowerCase()) || null;
-    }
-    
-    if (streamer) {
-      // Update tokens
-      console.log(`Updating existing streamer: ${streamer.username}`);
-      await db.updateStreamerToken(streamer.id, tokens.access_token, tokens.refresh_token);
-    } else {
-      // Get channel info (optional - may fail for bot accounts)
-      let chatroomId: number | undefined;
-      try {
-        const channelInfo = await kickAPI.getChannelInfo(userInfo.slug);
-        if (channelInfo) {
-          chatroomId = channelInfo.chatroom_id;
-        }
-      } catch (error) {
-        console.warn('Could not get channel info, proceeding without it');
-      }
-      
-      // Create new streamer
-      console.log(`Creating new streamer: ${userInfo.username}`);
-      const streamerId = await db.createStreamer({
-        username: userInfo.username,
-        kick_user_id: userInfo.id.toString(),
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
-        channel_name: userInfo.slug,
-        is_active: 1,
-      });
-      
-      streamer = await db.getStreamerById(streamerId);
-    }
-    
-    // Check if this is a forced streamer registration (from /auth/streamer)
-    const oauthType = req.cookies?.oauth_type;
-    const isStreamerOnly = oauthType === 'streamer';
-    
-    // If this is a bot account registration, show the token for Railway
-    // BUT skip if this is a forced streamer registration
-    const botUsername = process.env.BOT_USERNAME;
-    const isBotAccount = !isStreamerOnly && botUsername && userInfo.username.toLowerCase() === botUsername.toLowerCase();
-    
-    if (isBotAccount) {
-      // Store token temporarily to display it
-      const crypto = require('crypto');
-      const tokenDisplayId = crypto.randomBytes(16).toString('hex');
-      if (!(global as any).tokenDisplays) {
-        (global as any).tokenDisplays = new Map();
-      }
-      (global as any).tokenDisplays.set(tokenDisplayId, {
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
-        username: userInfo.username,
-        expires_at: Date.now() + 300000, // 5 minutes
-      });
-      
-      // Redirect to token display page
-      return res.redirect(`/bot-token?token_id=${tokenDisplayId}`);
-    }
-    
-    // Subscribe to chat events for this channel
-    try {
-      // Try to get channel info for chatroom ID
-      const channelInfo = await kickAPI.getChannelInfo(userInfo.slug);
-      
-      if (channelInfo && channelInfo.chatroom_id) {
-        const chatroomId = channelInfo.chatroom_id;
-        const webhookUrl = `${process.env.WEBHOOK_BASE_URL || 'http://localhost:3000'}/webhooks/kick`;
-        const webhookSecret = process.env.WEBHOOK_SECRET || '';
-        
-        console.log(`\n📡 Attempting to subscribe to chat events for ${userInfo.slug}...`);
-        const subscriptionResult = await kickAPI.subscribeToChannelChat(
-          chatroomId,
-          webhookUrl,
-          webhookSecret,
-          tokens.access_token
-        );
-        
-        if (subscriptionResult.success) {
-          console.log('✅ Successfully subscribed to chat events!');
-          // Store subscription ID in database for later management
-          if (streamer && subscriptionResult.subscriptionId) {
-            // TODO: Add subscription_id column to database and store it
-            console.log(`Subscription ID: ${subscriptionResult.subscriptionId}`);
-          }
-        } else {
-          console.error('⚠️ Failed to subscribe to chat events:', subscriptionResult.error);
-          console.error('Bot will still work for sending messages, but cannot listen to chat');
-        }
-      } else {
-        console.warn('⚠️ Could not get chatroom ID, skipping webhook subscription');
-        console.warn('Bot will still work for sending messages');
-        console.warn('To enable listening, the bot needs to be used on a specific channel');
-      }
-    } catch (error: any) {
-      console.error('⚠️ Error subscribing to chat events:', error.message);
-      console.error('Bot will still work for sending messages, but cannot listen to chat');
-    }
-    
-    // Redirect to home page with dashboard tab and streamer_id
-    // Store streamer_id in session/cookie for persistence
-    res.cookie('streamer_id', streamer?.id?.toString(), { httpOnly: false, maxAge: 86400000 }); // 24 hours
-    res.redirect(`/?success=1&streamer_id=${streamer?.id}&tab=dashboard`);
+    // Redirect to manual completion page where they enter their channel name
+    console.log('✅ Redirecting to manual registration page...');
+    return res.redirect(`/register/complete?token=${tempToken}`);
   } catch (error: any) {
     console.error('OAuth callback error:', error);
     res.redirect(`/?error=${encodeURIComponent(error.message)}`);
@@ -936,7 +741,7 @@ app.get('/api/online-status', async (req, res) => {
 });
 
 // Manual registration endpoint
-app.get('/register/manual', (req, res) => {
+app.get('/register/complete', (req, res) => {
   const { token } = req.query;
   if (!token || typeof token !== 'string') {
     return res.redirect('/?error=invalid_token');
@@ -948,15 +753,82 @@ app.get('/register/manual', (req, res) => {
     return res.redirect('/?error=token_expired');
   }
   
-  // Show manual registration page
-  res.sendFile(path.join(__dirname, '../public/index.html'));
+  // Show simple registration completion page
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Complete Registration - CrossTalk Bot</title>
+      <style>
+        body { font-family: Arial; max-width: 500px; margin: 50px auto; padding: 20px; }
+        h1 { color: #667eea; }
+        input { width: 100%; padding: 10px; margin: 10px 0; font-size: 16px; border: 2px solid #ddd; border-radius: 5px; }
+        button { width: 100%; padding: 15px; background: #667eea; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; }
+        button:hover { background: #5568d3; }
+        .info { background: #f0f0f0; padding: 15px; border-radius: 5px; margin: 20px 0; }
+      </style>
+    </head>
+    <body>
+      <h1>🎉 Almost Done!</h1>
+      <p>Authorization successful! Just enter your Kick channel name to complete registration:</p>
+      
+      <div class="info">
+        <strong>Your Kick username is:</strong> (e.g., realglitchdyeet)
+      </div>
+      
+      <form id="registerForm">
+        <input type="text" id="channelName" placeholder="Your Kick channel name" required>
+        <button type="submit">Complete Registration</button>
+      </form>
+      
+      <div id="status"></div>
+      
+      <script>
+        document.getElementById('registerForm').onsubmit = async (e) => {
+          e.preventDefault();
+          const channelName = document.getElementById('channelName').value.trim().toLowerCase();
+          const status = document.getElementById('status');
+          
+          if (!channelName) {
+            status.innerHTML = '<p style="color: red;">Please enter your channel name</p>';
+            return;
+          }
+          
+          status.innerHTML = '<p>Registering...</p>';
+          
+          try {
+            const response = await fetch('/api/register/complete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                token: '${token}',
+                channel_name: channelName
+              })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+              status.innerHTML = '<p style="color: green;">✅ Success! Redirecting...</p>';
+              setTimeout(() => window.location.href = '/?success=1', 1000);
+            } else {
+              status.innerHTML = '<p style="color: red;">❌ Error: ' + (data.error || 'Unknown error') + '</p>';
+            }
+          } catch (error) {
+            status.innerHTML = '<p style="color: red;">❌ Network error</p>';
+          }
+        };
+      </script>
+    </body>
+    </html>
+  `);
 });
 
-app.post('/api/register/manual', async (req, res) => {
+app.post('/api/register/complete', async (req, res) => {
   try {
-    const { token, username, channel } = req.body;
+    const { token, channel_name } = req.body;
     
-    if (!token || !username || !channel) {
+    if (!token || !channel_name) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
     
@@ -966,43 +838,33 @@ app.post('/api/register/manual', async (req, res) => {
       return res.status(400).json({ error: 'Token expired or invalid' });
     }
     
-    // Try to get user ID from channel info
-    const channelInfo = await kickAPI.getChannelInfo(channel);
-    let userId: string | null = null;
+    console.log(`\n📝 Completing registration for channel: ${channel_name}`);
     
-    if (channelInfo) {
-      userId = channelInfo.user_id?.toString() || null;
+    // Try to get channel info from Kick's public API
+    const channelInfo = await kickAPI.getChannelInfo(channel_name);
+    
+    if (!channelInfo) {
+      return res.status(400).json({ error: `Channel "${channel_name}" not found on Kick. Make sure you entered the correct username.` });
     }
     
-    // If we can't get user ID, generate a temporary one or use username hash
-    if (!userId) {
-      const crypto = require('crypto');
-      userId = crypto.createHash('md5').update(username).digest('hex').substring(0, 10);
-      console.log('Using generated user ID for:', username);
-    }
-    
-    // Ensure userId is not null
-    if (!userId) {
-      return res.status(400).json({ error: 'Could not determine user ID' });
-    }
+    const userId = channelInfo.user_id?.toString() || channelInfo.id?.toString() || Date.now().toString();
     
     // Check if streamer already exists
-    let streamer = await db.getStreamerByUsername(username);
-    if (!streamer) {
-      streamer = await db.getStreamerByKickId(userId);
-    }
+    let streamer = await db.getStreamerByUsername(channel_name);
     
     if (streamer) {
       // Update tokens
+      console.log(`Updating existing streamer: ${channel_name}`);
       await db.updateStreamerToken(streamer.id, tempReg.access_token, tempReg.refresh_token);
     } else {
       // Create new streamer
+      console.log(`Creating new streamer: ${channel_name}`);
       const streamerId = await db.createStreamer({
-        username: username,
+        username: channel_name,
         kick_user_id: userId,
         access_token: tempReg.access_token,
         refresh_token: tempReg.refresh_token,
-        channel_name: channel,
+        channel_name: channel_name,
         is_active: 1,
       });
       streamer = await db.getStreamerById(streamerId);
@@ -1011,11 +873,24 @@ app.post('/api/register/manual', async (req, res) => {
     // Clean up temp registration
     (global as any).tempRegistrations?.delete(token);
     
-    // Redirect to dashboard
-    res.cookie('streamer_id', streamer?.id?.toString(), { httpOnly: false, maxAge: 86400000 });
-    res.json({ success: true, streamer_id: streamer?.id });
+    // Restart bot to pick up new streamer
+    if (bot) {
+      console.log('🔄 Restarting bot to load new streamer...');
+      try {
+        await bot.stop();
+        await bot.start();
+        console.log('✅ Bot restarted successfully');
+      } catch (error) {
+        console.error('⚠️ Error restarting bot:', error);
+      }
+    }
+    
+    console.log(`✅ Registration complete for ${channel_name}!`);
+    console.log(`   Test it: Go to kick.com/${channel_name} and type !ping in chat`);
+    
+    res.json({ success: true, streamer_id: streamer?.id, channel_name });
   } catch (error: any) {
-    console.error('Manual registration error:', error);
+    console.error('Registration error:', error);
     res.status(500).json({ error: error.message });
   }
 });
