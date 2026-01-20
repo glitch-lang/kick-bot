@@ -1,8 +1,7 @@
-import { Client, GatewayIntentBits, EmbedBuilder, ChannelType, TextChannel, VoiceChannel } from 'discord.js';
+import { Client, GatewayIntentBits, EmbedBuilder, ChannelType, TextChannel } from 'discord.js';
 import axios from 'axios';
 import * as dotenv from 'dotenv';
 import { Database } from './database';
-import { StreamManager } from './stream-manager';
 
 dotenv.config();
 
@@ -11,12 +10,10 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildVoiceStates, // Required for voice channel access
   ],
 });
 
 const db = new Database();
-const streamManager = new StreamManager();
 const KICK_API_URL = process.env.KICK_BOT_API_URL || 'https://web-production-56232.up.railway.app';
 
 // Track which Discord channels are watching which Kick streams
@@ -77,24 +74,6 @@ client.on('messageCreate', async (message) => {
   // Command: !kick help
   if (content.startsWith('!kick help')) {
     await handleHelpCommand(message);
-    return;
-  }
-  
-  // Command: !kick stream <streamer>
-  if (content.startsWith('!kick stream ')) {
-    await handleStreamCommand(message);
-    return;
-  }
-  
-  // Command: !kick stopstream
-  if (content.startsWith('!kick stopstream')) {
-    await handleStopStreamCommand(message);
-    return;
-  }
-  
-  // Command: !kick streams
-  if (content.startsWith('!kick streams')) {
-    await handleActiveStreamsCommand(message);
     return;
   }
 });
@@ -291,10 +270,6 @@ async function handleHelpCommand(message: any) {
         value: '`!kick watch <streamer>` - Watch a streamer in this channel\n`!kick unwatch` - Stop watching',
       },
       {
-        name: '🎬 Live Streaming (NEW!)',
-        value: '`!kick stream <streamer>` - Stream Kick audio to voice channel\n`!kick stopstream` - Stop active stream\n`!kick streams` - Show active streams',
-      },
-      {
         name: '❓ Help',
         value: '`!kick help` - Show this help message',
       }
@@ -360,6 +335,7 @@ async function checkLiveStreams() {
   }
 }
 
+/* STREAMING FEATURES DISABLED - Requires @discordjs/voice, opus, puppeteer
 async function handleStreamCommand(message: any) {
   const parts = message.content.split(' ').slice(2); // Remove "!kick stream"
   
@@ -456,6 +432,7 @@ async function handleActiveStreamsCommand(message: any) {
   
   await message.reply({ embeds: [embed] });
 }
+*/
 
 // Handle incoming responses from Kick streamers
 export async function handleKickResponse(data: any) {

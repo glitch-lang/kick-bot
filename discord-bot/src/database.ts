@@ -1,5 +1,4 @@
 import sqlite3 from 'sqlite3';
-import { promisify } from 'util';
 
 export class Database {
   private db: sqlite3.Database;
@@ -9,10 +8,35 @@ export class Database {
     this.init();
   }
 
+  private runQuery(sql: string, params: any[] = []): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.db.run(sql, params, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+  }
+
+  private getQuery(sql: string, params: any[] = []): Promise<any> {
+    return new Promise((resolve, reject) => {
+      this.db.get(sql, params, (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    });
+  }
+
+  private allQuery(sql: string, params: any[] = []): Promise<any[]> {
+    return new Promise((resolve, reject) => {
+      this.db.all(sql, params, (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    });
+  }
+
   private async init() {
-    const run = promisify(this.db.run.bind(this.db));
-    
-    await run(`
+    await this.runQuery(`
       CREATE TABLE IF NOT EXISTS watch_parties (
         discord_channel_id TEXT PRIMARY KEY,
         kick_channel_name TEXT NOT NULL,
@@ -21,7 +45,7 @@ export class Database {
       )
     `);
     
-    await run(`
+    await this.runQuery(`
       CREATE TABLE IF NOT EXISTS discord_messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         discord_user_id TEXT NOT NULL,
@@ -33,7 +57,7 @@ export class Database {
       )
     `);
     
-    await run(`
+    await this.runQuery(`
       CREATE TABLE IF NOT EXISTS stream_notifications (
         discord_channel_id TEXT NOT NULL,
         kick_channel_name TEXT NOT NULL,
@@ -46,39 +70,33 @@ export class Database {
   }
 
   async loadWatchParties(): Promise<any[]> {
-    const all = promisify(this.db.all.bind(this.db));
-    return await all('SELECT * FROM watch_parties');
+    return await this.allQuery('SELECT * FROM watch_parties');
   }
 
   async saveWatchParty(channelId: string, kickChannelName: string, guildId: string) {
-    const run = promisify(this.db.run.bind(this.db));
-    await run(
+    await this.runQuery(
       'INSERT OR REPLACE INTO watch_parties (discord_channel_id, kick_channel_name, guild_id) VALUES (?, ?, ?)',
       [channelId, kickChannelName, guildId]
     );
   }
 
   async removeWatchParty(channelId: string) {
-    const run = promisify(this.db.run.bind(this.db));
-    await run('DELETE FROM watch_parties WHERE discord_channel_id = ?', [channelId]);
+    await this.runQuery('DELETE FROM watch_parties WHERE discord_channel_id = ?', [channelId]);
   }
 
   async logDiscordMessage(data: any) {
-    const run = promisify(this.db.run.bind(this.db));
-    await run(
+    await this.runQuery(
       'INSERT INTO discord_messages (discord_user_id, discord_channel_id, kick_streamer, message, request_id) VALUES (?, ?, ?, ?, ?)',
       [data.discord_user_id, data.discord_channel_id, data.kick_streamer, data.message, data.request_id]
     );
   }
 
   async getOriginalMessage(requestId: number): Promise<any> {
-    const get = promisify(this.db.get.bind(this.db));
-    return await get('SELECT * FROM discord_messages WHERE request_id = ?', [requestId]);
+    return await this.getQuery('SELECT * FROM discord_messages WHERE request_id = ?', [requestId]);
   }
 
   async getLastNotification(channelId: string, kickChannelName: string): Promise<number | null> {
-    const get = promisify(this.db.get.bind(this.db));
-    const result: any = await get(
+    const result: any = await this.getQuery(
       'SELECT notified_at FROM stream_notifications WHERE discord_channel_id = ? AND kick_channel_name = ?',
       [channelId, kickChannelName]
     );
@@ -90,8 +108,7 @@ export class Database {
   }
 
   async saveNotification(channelId: string, kickChannelName: string) {
-    const run = promisify(this.db.run.bind(this.db));
-    await run(
+    await this.runQuery(
       'INSERT OR REPLACE INTO stream_notifications (discord_channel_id, kick_channel_name, notified_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
       [channelId, kickChannelName]
     );

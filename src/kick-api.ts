@@ -354,11 +354,6 @@ export class KickAPI {
         try {
           const parsed = JSON.parse(eventStr);
           
-          // Debug: Log all events to see what we're receiving
-          if (process.env.DEBUG_CHAT === 'true') {
-            console.log(`\n🔍 [DEBUG] Pusher event for ${channelSlug}:`, parsed.event, parsed.data ? 'has data' : 'no data');
-          }
-          
           // Handle Pusher events
           if (parsed.event === 'pusher:connection_established') {
             console.log(`✅ Pusher connection established for ${channelSlug}`);
@@ -485,24 +480,13 @@ export class KickAPI {
               created_at: messageData?.created_at || messageData?.timestamp || new Date().toISOString(),
             };
             
-            console.log(`   Parsed message:`, JSON.stringify(chatMessage, null, 2));
-            console.log(`   Content: "${chatMessage.content}"`);
-            console.log(`   User: ${chatMessage.user.username}`);
-            
             onMessage(chatMessage);
           } else if (parsed.event && parsed.data) {
-            // Log ALL events to see what Kick actually sends
-            console.log(`\n🔍 [DEBUG] Event received: ${parsed.event}`);
-            console.log(`   Event type: ${typeof parsed.event}`);
-            console.log(`   Has data: ${!!parsed.data}`);
-            console.log(`   Data preview:`, JSON.stringify(parsed.data).substring(0, 200));
-            
             // Try to parse as chat message if it has message-like structure
             if (parsed.event !== 'pusher:error' && parsed.event !== 'pusher:connection_established' && parsed.event !== 'pusher_internal:subscription_succeeded') {
               try {
                 const messageData = typeof parsed.data === 'string' ? JSON.parse(parsed.data) : parsed.data;
                 if (messageData?.content || messageData?.message || messageData?.text) {
-                  console.log(`\n📨 ⚠️ Found message-like data in event "${parsed.event}" - attempting to parse`);
                   const chatMessage: KickChatMessage = {
                     id: messageData?.id?.toString() || Date.now().toString(),
                     content: messageData?.content || messageData?.message || messageData?.text || '',
@@ -518,7 +502,6 @@ export class KickAPI {
                     },
                     created_at: messageData?.created_at || messageData?.timestamp || new Date().toISOString(),
                   };
-                  console.log(`   ✅ Parsed as chat message:`, chatMessage.content);
                   onMessage(chatMessage);
                 }
               } catch (e) {

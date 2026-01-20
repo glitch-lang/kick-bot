@@ -103,11 +103,6 @@ export class KickBot {
     const username = message.user.username;
     const channelSlug = message.channel.slug;
     
-    console.log(`\n🎯 Bot received message in ${channelSlug}:`);
-    console.log(`   From: @${username}`);
-    console.log(`   Content: "${content}"`);
-    console.log(`   Message ID: ${message.id}`);
-    
     // Handle !setupchat command - register via chat
     if (content.startsWith('!setupchat')) {
       await this.handleSetupChatCommand(message, channelSlug);
@@ -256,7 +251,7 @@ export class KickBot {
     await db.setCooldown(userId, channel, command.id, command.cooldown_seconds);
     
     // Send message to target streamer's chat with clear sender information
-    const notificationMessage = `📨 Message from @${userId} (${fromStreamer.channel_name} / ${fromStreamer.username}): "${messageText}" | ID: ${requestId} | Reply: !respond ${requestId} <message>`;
+    const notificationMessage = `📨 @${userId} from ${fromStreamer.channel_name}: "${messageText}" | Reply: !reply <your message>`;
     await this.sendMessage(
       targetStreamer.channel_name,
       targetStreamer.access_token,
@@ -474,7 +469,7 @@ export class KickBot {
     await db.setCooldown(userId, channel, cooldownKey, targetStreamer.cooldown_seconds || 60);
     
     // Send message to target streamer's chat
-    const notificationMessage = `📨 Message from @${userId} (${fromStreamer.channel_name} / ${fromStreamer.username}): "${messageText}" | ID: ${requestId} | Reply: !respond ${requestId} <message> OR !reply <message>`;
+    const notificationMessage = `📨 @${userId} from ${fromStreamer.channel_name}: "${messageText}" | Reply: !reply <your message>`;
     await this.sendMessage(
       targetStreamer.channel_name,
       targetStreamer.access_token,
