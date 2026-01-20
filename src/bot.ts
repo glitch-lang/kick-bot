@@ -13,6 +13,8 @@ export class KickBot {
   private pollingInterval: NodeJS.Timeout | null = null;
   private isStarted: boolean = false;
   private lastMessagePerChannel: Map<number, number> = new Map(); // streamer_id -> last_request_id
+  private processedMessageIds: Set<string> = new Set(); // Track processed message IDs to prevent duplicates
+  private messageIdCleanupInterval: NodeJS.Timeout | null = null;
 
   async start() {
     try {
@@ -37,6 +39,16 @@ export class KickBot {
           console.error('Error cleaning up cooldowns:', error);
         }
       }, 60000); // Every minute
+      
+      // Cleanup old processed message IDs (keep only last 5 minutes)
+      this.messageIdCleanupInterval = setInterval(() => {
+        try {
+          // Clear the set every 5 minutes to prevent memory buildup
+          this.processedMessageIds.clear();
+        } catch (error: any) {
+          console.error('Error cleaning up message IDs:', error);
+        }
+      }, 300000); // Every 5 minutes
       
       this.isStarted = true;
       console.log('Kick Bot started and ready');
@@ -69,6 +81,12 @@ export class KickBot {
 
   private async connectToChannel(streamer: db.Streamer) {
     try {
+      // Check if already connected to this channel
+      if (this.listeners.has(streamer.channel_name)) {
+        console.log(`Already connected to channel: ${streamer.channel_name}, skipping...`);
+        return;
+      }
+      
       console.log(`Connecting to channel: ${streamer.channel_name}`);
       
       // Set up message handler - no need for commands, we'll check all streamers
@@ -102,6 +120,13 @@ export class KickBot {
     const content = message.content.trim();
     const username = message.user.username;
     const channelSlug = message.channel.slug;
+    
+    // Deduplicate: Skip if we've already processed this message ID
+    const messageId = `${message.id}-${channelSlug}`;
+    if (this.processedMessageIds.has(messageId)) {
+      return; // Already processed, skip
+    }
+    this.processedMessageIds.add(messageId);
     
     // Handle !setupchat command - register via chat
     if (content.startsWith('!setupchat')) {

@@ -317,6 +317,12 @@ export class KickAPI {
   }
 
   private async connectToPusher(channelSlug: string, chatroomId: number, onMessage: (message: KickChatMessage) => void): Promise<void> {
+    // Check if already connected to this channel
+    if (this.pusherConnections.has(channelSlug)) {
+      console.log(`Already connected to Pusher for ${channelSlug}, skipping...`);
+      return;
+    }
+    
     // Kick's Pusher configuration - UPDATED KEY (2026)
     const PUSHER_KEY = '32cbd69e4b950bf97679';
     
