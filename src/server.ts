@@ -235,6 +235,61 @@ app.post('/webhooks/kick', express.raw({ type: 'application/json' }), async (req
 });
 
 // OAuth Routes
+
+// STREAMER-ONLY registration (bypasses bot check)
+app.get('/auth/streamer', (req, res) => {
+  const clientId = process.env.KICK_CLIENT_ID;
+  const redirectUri = process.env.KICK_REDIRECT_URI || `http://localhost:${PORT}/auth/kick/callback`;
+  
+  if (!clientId || clientId === 'your_kick_client_id' || clientId.trim() === '') {
+    console.error('Kick client ID not configured properly');
+    return res.redirect(`/?error=${encodeURIComponent('Bot is not yet configured. Please contact the administrator.')}`);
+  }
+  
+  try {
+    const crypto = require('crypto');
+    const state = crypto.randomBytes(32).toString('base64url');
+    const { codeVerifier, codeChallenge } = kickAPI.generatePKCE();
+    
+    const cookieOptions = {
+      httpOnly: true,
+      maxAge: 600000,
+      sameSite: 'lax' as const,
+      secure: false,
+    };
+    
+    res.cookie('oauth_state', state, cookieOptions);
+    res.cookie('oauth_code_verifier', codeVerifier, cookieOptions);
+    res.cookie('oauth_type', 'streamer', cookieOptions); // FORCE streamer registration
+    
+    if (!(global as any).oauthSessions) {
+      (global as any).oauthSessions = new Map();
+    }
+    (global as any).oauthSessions.set(state, { 
+      codeVerifier, 
+      type: 'streamer', // Mark this session as streamer-only
+      timestamp: Date.now() 
+    });
+    
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'channel:read channel:write chat:read chat:write events:subscribe',
+      state: state,
+      code_challenge: codeChallenge,
+      code_challenge_method: 'S256'
+    });
+    
+    const authUrl = `https://kick.com/oauth2/authorize?${params.toString()}`;
+    console.log('🎯 STREAMER-ONLY registration started (will NOT show bot token page)');
+    res.redirect(authUrl);
+  } catch (error: any) {
+    console.error('Streamer auth error:', error);
+    res.status(500).send('Authorization failed');
+  }
+});
+
 app.get('/auth/kick', (req, res) => {
   const clientId = process.env.KICK_CLIENT_ID;
   const redirectUri = process.env.KICK_REDIRECT_URI || `http://localhost:${PORT}/auth/kick/callback`;
@@ -316,8 +371,9 @@ app.get('/auth/kick/callback', async (req, res) => {
     return res.redirect('/?error=invalid_state');
   }
   
-  // Clear the state cookie
+  // Clear the state and type cookies
   res.clearCookie('oauth_state');
+  res.clearCookie('oauth_type');
   
   // Check for OAuth errors
   if (error) {
@@ -601,10 +657,14 @@ app.get('/auth/kick/callback', async (req, res) => {
       streamer = await db.getStreamerById(streamerId);
     }
     
+    // Check if this is a forced streamer registration (from /auth/streamer)
+    const oauthType = req.cookies?.oauth_type;
+    const isStreamerOnly = oauthType === 'streamer';
+    
     // If this is a bot account registration, show the token for Railway
-    // Check if username matches BOT_USERNAME or if it's the first registration
+    // BUT skip if this is a forced streamer registration
     const botUsername = process.env.BOT_USERNAME;
-    const isBotAccount = botUsername && userInfo.username.toLowerCase() === botUsername.toLowerCase();
+    const isBotAccount = !isStreamerOnly && botUsername && userInfo.username.toLowerCase() === botUsername.toLowerCase();
     
     if (isBotAccount) {
       // Store token temporarily to display it
