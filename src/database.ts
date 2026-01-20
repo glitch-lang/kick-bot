@@ -168,12 +168,20 @@ export async function getStreamerByChannelName(channelName: string): Promise<Str
 }
 
 export async function createStreamer(data: Omit<Streamer, 'id' | 'created_at'>): Promise<number> {
-  const result = await dbRun(
-    `INSERT INTO streamers (username, kick_user_id, access_token, refresh_token, channel_name, cooldown_seconds, is_active)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [data.username, data.kick_user_id, data.access_token, data.refresh_token || null, data.channel_name, data.cooldown_seconds || 60, data.is_active]
-  );
-  return (result as any).lastID;
+  return new Promise((resolve, reject) => {
+    db.run(
+      `INSERT INTO streamers (username, kick_user_id, access_token, refresh_token, channel_name, cooldown_seconds, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [data.username, data.kick_user_id, data.access_token, data.refresh_token || null, data.channel_name, data.cooldown_seconds || 60, data.is_active],
+      function(err) {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(this.lastID);
+        }
+      }
+    );
+  });
 }
 
 export async function updateStreamerCooldown(id: number, cooldownSeconds: number) {
