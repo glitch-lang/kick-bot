@@ -73,7 +73,7 @@ export class StreamManager {
       const connection = joinVoiceChannel({
         channelId: voiceChannel.id,
         guildId: guildId,
-        adapterCreator: voiceChannel.guild.voiceAdapterCreator,
+        adapterCreator: voiceChannel.guild.voiceAdapterCreator as any,
         selfDeaf: false,
         selfMute: false
       });
@@ -120,31 +120,34 @@ export class StreamManager {
       });
 
       // 8. Send notification to text channel
+      const embedData: any = {
+        color: 0x00ff00,
+        title: `🎬 Now Watching: ${streamerName}`,
+        description: `Join ${voiceChannel} to listen!\n\n**Watch the video:** ${streamInfo.kickUrl}\n\n🎮 Stream Title: ${streamInfo.title || 'Live Stream'}`,
+        fields: [
+          {
+            name: '👥 Viewers',
+            value: streamInfo.viewers?.toString() || 'Unknown',
+            inline: true
+          },
+          {
+            name: '🎮 Category',
+            value: streamInfo.category || 'Unknown',
+            inline: true
+          }
+        ],
+        footer: {
+          text: 'Use !kick unwatch to stop'
+        },
+        timestamp: new Date().toISOString()
+      };
+      
+      if (streamInfo.thumbnail) {
+        embedData.thumbnail = { url: streamInfo.thumbnail };
+      }
+      
       await textChannel.send({
-        embeds: [{
-          color: 0x00ff00,
-          title: `🎬 Now Watching: ${streamerName}`,
-          description: `Join ${voiceChannel} to listen!\n\n**Watch the video:** ${streamInfo.kickUrl}\n\n🎮 Stream Title: ${streamInfo.title || 'Live Stream'}`,
-          fields: [
-            {
-              name: '👥 Viewers',
-              value: streamInfo.viewers?.toString() || 'Unknown',
-              inline: true
-            },
-            {
-              name: '🎮 Category',
-              value: streamInfo.category || 'Unknown',
-              inline: true
-            }
-          ],
-          thumbnail: {
-            url: streamInfo.thumbnail || undefined
-          },
-          footer: {
-            text: 'Use !kick unwatch to stop'
-          },
-          timestamp: new Date().toISOString()
-        }]
+        embeds: [embedData]
       });
 
       return `✅ Now streaming ${streamerName}'s audio to voice! Open the link above to watch the video.`;

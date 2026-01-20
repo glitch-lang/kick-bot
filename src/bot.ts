@@ -735,7 +735,7 @@ export class KickBot {
     if (request.from_channel === 'discord' && request.discord_channel_id) {
       // For Discord messages, we need to send via the Discord bot's webhook
       try {
-        const discordWebhookUrl = process.env.DISCORD_WEBHOOK_URL;
+        const discordWebhookUrl = request.discord_webhook_url;
         if (discordWebhookUrl) {
           // Send via Discord webhook
           await kickAPI.sendDiscordWebhook(discordWebhookUrl, {
@@ -751,11 +751,11 @@ export class KickBot {
             `@${message.user.username} ✅ Reply sent to @${request.from_user} on Discord!`
           );
         } else {
-          console.log(`Discord reply stored for channel ${request.discord_channel_id}: ${responseMessage}`);
+          console.log(`Discord reply: No webhook URL stored for channel ${request.discord_channel_id}`);
           await this.sendMessage(
             streamer.channel_name,
             streamer.access_token,
-            `@${message.user.username} ⚠️ Reply saved, but Discord webhook not configured.`
+            `@${message.user.username} ⚠️ Cannot send reply: Discord channel hasn't set up a webhook yet.`
           );
         }
       } catch (error: any) {
@@ -865,9 +865,9 @@ export class KickBot {
     
     // Check if message came from Discord
     if (request.from_channel === 'discord' && request.discord_channel_id) {
-      // For Discord messages, we need to send via the Discord bot's API endpoint
+      // For Discord messages, we need to send via the Discord bot's webhook
       try {
-        const discordWebhookUrl = process.env.DISCORD_WEBHOOK_URL;
+        const discordWebhookUrl = request.discord_webhook_url;
         if (discordWebhookUrl) {
           // Send via Discord webhook
           await kickAPI.sendDiscordWebhook(discordWebhookUrl, {
@@ -875,17 +875,21 @@ export class KickBot {
             username: 'CrossTalk',
             avatar_url: 'https://i.imgur.com/4M34hi2.png'
           });
+          
+          // Confirm to responder
+          await this.sendMessage(
+            streamer.channel_name,
+            streamer.access_token,
+            `@${message.user.username} ✅ Reply sent to @${request.from_user} on Discord!`
+          );
         } else {
-          // Fallback: Store in database for Discord bot to poll
-          console.log(`Discord reply stored for channel ${request.discord_channel_id}: ${responseMessage}`);
+          console.log(`Discord reply: No webhook URL stored for channel ${request.discord_channel_id}`);
+          await this.sendMessage(
+            streamer.channel_name,
+            streamer.access_token,
+            `@${message.user.username} ⚠️ Cannot send reply: Discord channel hasn't set up a webhook yet.`
+          );
         }
-        
-        // Confirm to responder
-        await this.sendMessage(
-          streamer.channel_name,
-          streamer.access_token,
-          `@${message.user.username} ✅ Reply sent to @${request.from_user} on Discord!`
-        );
       } catch (error: any) {
         console.error('Error sending Discord reply:', error);
         await this.sendMessage(

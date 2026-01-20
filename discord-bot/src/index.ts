@@ -94,6 +94,18 @@ client.on('messageCreate', async (message) => {
     return;
   }
   
+  // Command: !kick setupwebhook <webhook_url>
+  if (content.startsWith('!kick setupwebhook')) {
+    await handleSetupWebhookCommand(message);
+    return;
+  }
+  
+  // Command: !kick removewebhook
+  if (content.startsWith('!kick removewebhook')) {
+    await handleRemoveWebhookCommand(message);
+    return;
+  }
+  
   // Command: !kick help
   if (content.startsWith('!kick help')) {
     await handleHelpCommand(message);
@@ -113,6 +125,12 @@ async function handleKickMessage(message: any) {
   const messageText = parts.slice(1).join(' ');
   
   try {
+    // Check if webhook is set up for this channel
+    const webhookUrl = await db.getWebhook(message.channel.id);
+    if (!webhookUrl) {
+      await message.reply('⚠️ **Webhook not set up!**\n\nTo receive replies from Kick streamers in this channel, you need to set up a webhook first.\n\n**How to set up:**\n1. Right-click this channel → **Edit Channel**\n2. Go to **Integrations** → **Webhooks**\n3. Click **New Webhook** or **Create Webhook**\n4. Copy the **Webhook URL**\n5. Run: `!kick setupwebhook <paste_webhook_url_here>`\n\nYour message will still be sent, but replies won\'t appear here until you set up the webhook.');
+    }
+    
     // Send message via Kick bot API
     const response = await axios.post(`${KICK_API_URL}/api/discord/message`, {
       from_user: message.author.username,
@@ -120,6 +138,7 @@ async function handleKickMessage(message: any) {
       to_streamer: streamerName,
       message: messageText,
       discord_channel_id: message.channel.id,
+      webhook_url: webhookUrl, // Send the webhook URL to the backend
     });
     
     if (response.data.success) {
@@ -278,6 +297,50 @@ async function handleStreamersCommand(message: any) {
   }
 }
 
+async function handleSetupWebhookCommand(message: any) {
+  const parts = message.content.split(' ').slice(2); // Remove "!kick setupwebhook"
+  
+  if (parts.length === 0) {
+    await message.reply('❌ Usage: `!kick setupwebhook <webhook_url>`\n\n**How to get a webhook URL:**\n1. Right-click this channel → **Edit Channel**\n2. Go to **Integrations** → **Webhooks**\n3. Click **New Webhook** or **Create Webhook**\n4. Copy the **Webhook URL**\n5. Run: `!kick setupwebhook <paste_url_here>`\n\n**Why?** This allows Kick streamers to send replies back to this Discord channel!');
+    return;
+  }
+  
+  const webhookUrl = parts[0];
+  
+  // Validate webhook URL
+  if (!webhookUrl.startsWith('https://discord.com/api/webhooks/') && !webhookUrl.startsWith('https://discordapp.com/api/webhooks/')) {
+    await message.reply('❌ Invalid webhook URL! It should start with `https://discord.com/api/webhooks/` or `https://discordapp.com/api/webhooks/`');
+    return;
+  }
+  
+  try {
+    // Save webhook to database
+    await db.saveWebhook(message.channel.id, webhookUrl, message.guild?.id || '');
+    
+    await message.reply('✅ **Webhook set up successfully!**\n\nKick streamers can now reply to your messages in this channel using `!reply` or `!respond` commands.');
+  } catch (error: any) {
+    console.error('Error saving webhook:', error);
+    await message.reply(`❌ Error saving webhook: ${error.message}`);
+  }
+}
+
+async function handleRemoveWebhookCommand(message: any) {
+  try {
+    const existing = await db.getWebhook(message.channel.id);
+    
+    if (!existing) {
+      await message.reply('❌ No webhook set up for this channel.');
+      return;
+    }
+    
+    await db.removeWebhook(message.channel.id);
+    await message.reply('✅ Webhook removed from this channel. Kick streamers can no longer send replies here.');
+  } catch (error: any) {
+    console.error('Error removing webhook:', error);
+    await message.reply(`❌ Error removing webhook: ${error.message}`);
+  }
+}
+
 async function handleHelpCommand(message: any) {
   const embed = new EmbedBuilder()
     .setColor(0x667eea)
@@ -289,8 +352,16 @@ async function handleHelpCommand(message: any) {
         value: '`!kick message <streamer> <msg>` - Send message to Kick streamer\n`!kick online` - See who\'s live\n`!kick streamers` - List all streamers',
       },
       {
-        name: '📺 Watch Parties',
-        value: '`!kick watch <streamer>` - Watch a streamer in this channel\n`!kick unwatch` - Stop watching',
+        name: '⚙️ Webhook Setup (Required for Replies)',
+        value: '`!kick setupwebhook <url>` - Set up webhook for receiving replies\n`!kick removewebhook` - Remove webhook',
+      },
+      {
+        name: '📺 Watch Parties (Notifications)',
+        value: '`!kick watch <streamer>` - Get notified when streamer goes live\n`!kick unwatch` - Stop watching',
+      },
+      {
+        name: '🎵 Voice Streaming (NEW!)',
+        value: '`!kick stream <streamer>` - Stream Kick audio to your voice channel\n`!kick stopstream` - Stop streaming\n`!kick streams` - Show active streams',
       },
       {
         name: '❓ Help',
@@ -358,7 +429,7 @@ async function checkLiveStreams() {
   }
 }
 
-/* STREAMING FEATURES DISABLED - Requires @discordjs/voice, opus, puppeteer
+// VOICE STREAMING COMMANDS
 async function handleStreamCommand(message: any) {
   const parts = message.content.split(' ').slice(2); // Remove "!kick stream"
   
@@ -378,33 +449,17 @@ async function handleStreamCommand(message: any) {
   
   const voiceChannel = member.voice.channel as VoiceChannel;
   
-  // Check if already streaming in this channel
-  if (streamManager.isStreaming(voiceChannel.id)) {
-    await message.reply('❌ Already streaming in this voice channel! Use `!kick stopstream` to stop first.');
-    return;
-  }
-  
-  await message.reply(`🎬 Starting stream of **${streamerName}**...\n\n⏳ Opening browser and connecting (this may take 10-20 seconds)...`);
+  await message.reply(`🎬 Starting stream of **${streamerName}**...\n\n⏳ Connecting to Kick stream (this may take 5-10 seconds)...`);
   
   try {
-    const success = await streamManager.startStream(streamerName, voiceChannel);
+    const result = await streamManager.startWatchParty(
+      streamerName,
+      voiceChannel,
+      message.channel as TextChannel
+    );
     
-    if (success) {
-      const embed = new EmbedBuilder()
-        .setColor(0xff0000)
-        .setTitle(`🔴 Now Streaming: ${streamerName}`)
-        .setDescription('Stream is now playing in this voice channel!')
-        .addFields(
-          { name: '🎧 Audio', value: 'Stream audio only (for now)', inline: true },
-          { name: '🔇 Bot Status', value: 'Self-deafened (won\'t hear you)', inline: true }
-        )
-        .setFooter({ text: 'Use !kick stopstream to stop' })
-        .setTimestamp();
-      
-      await message.reply({ embeds: [embed] });
-    } else {
-      await message.reply('❌ Failed to start stream. Check that the streamer exists and is live!');
-    }
+    // Result is already sent by StreamManager to the channel
+    console.log(`Stream result: ${result}`);
   } catch (error: any) {
     console.error('Stream command error:', error);
     await message.reply(`❌ Error starting stream: ${error.message}`);
@@ -412,50 +467,49 @@ async function handleStreamCommand(message: any) {
 }
 
 async function handleStopStreamCommand(message: any) {
-  const member = message.member;
+  const guildId = message.guild?.id;
   
-  if (!member?.voice.channel) {
-    await message.reply('❌ You must be in the voice channel with the stream to stop it!');
+  if (!guildId) {
+    await message.reply('❌ This command can only be used in a server!');
     return;
   }
   
-  const voiceChannel = member.voice.channel as VoiceChannel;
-  
-  if (!streamManager.isStreaming(voiceChannel.id)) {
-    await message.reply('❌ No active stream in this voice channel!');
-    return;
-  }
-  
-  const success = await streamManager.stopStream(voiceChannel.id);
-  
-  if (success) {
-    await message.reply('✅ Stream stopped and disconnected from voice channel.');
-  } else {
-    await message.reply('❌ Failed to stop stream.');
+  try {
+    const result = await streamManager.stopWatchParty(guildId);
+    await message.reply(result);
+  } catch (error: any) {
+    console.error('Stop stream error:', error);
+    await message.reply(`❌ Error stopping stream: ${error.message}`);
   }
 }
 
 async function handleActiveStreamsCommand(message: any) {
-  const activeStreams = streamManager.getActiveStreams();
+  const guildId = message.guild?.id;
+  
+  if (!guildId) {
+    await message.reply('❌ This command can only be used in a server!');
+    return;
+  }
+  
+  const activeStreams = streamManager.getActiveStreams(guildId);
   
   if (activeStreams.length === 0) {
-    await message.reply('📺 No active streams right now.');
+    await message.reply('📺 No active streams in this server right now.');
     return;
   }
   
   const embed = new EmbedBuilder()
     .setColor(0x667eea)
-    .setTitle('📺 Active Streams')
+    .setTitle('📺 Active Watch Parties')
     .setDescription(
       activeStreams.map(s => 
-        `🔴 **${s.kickChannel}** streaming in <#${s.discordChannel}>`
-      ).join('\n')
+        `🔴 **${s.streamerName}** streaming in <#${s.voiceChannelId}>\n🔗 ${s.kickStreamUrl}`
+      ).join('\n\n')
     )
     .setTimestamp();
   
   await message.reply({ embeds: [embed] });
 }
-*/
 
 // Handle incoming responses from Kick streamers
 export async function handleKickResponse(data: any) {

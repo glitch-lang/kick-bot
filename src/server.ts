@@ -586,6 +586,51 @@ app.get('/api/streamers/online', async (req, res) => {
   }
 });
 
+// API endpoint to get streamer livestream info (for Discord bot voice streaming)
+app.get('/api/kick/streamer/:channelName', async (req, res) => {
+  try {
+    const { channelName } = req.params;
+    
+    // Get basic channel info
+    const channelInfo = await kickAPI.getChannelInfo(channelName);
+    if (!channelInfo) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Channel not found' 
+      });
+    }
+    
+    // Get livestream data
+    const livestreamData = await kickAPI.getLivestreamData(channelName);
+    
+    res.json({
+      success: true,
+      streamer: {
+        channel_name: channelName,
+        user_id: channelInfo.user_id,
+        is_live: livestreamData?.is_live || false,
+        playback_url: livestreamData?.playback_url,
+        livestream: livestreamData?.is_live ? {
+          session_title: livestreamData.session_title,
+          viewer_count: livestreamData.viewer_count,
+          category: {
+            name: livestreamData.category
+          },
+          thumbnail: {
+            url: livestreamData.thumbnail_url
+          }
+        } : null
+      }
+    });
+  } catch (error: any) {
+    console.error('Error getting streamer info:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
 app.get('/api/streamer/:id', async (req, res) => {
   try {
     const streamer = await db.getStreamerById(parseInt(req.params.id));
@@ -1517,7 +1562,7 @@ app.post('/api/admin/register-channel', async (req, res) => {
 // Discord Bot Integration Endpoints
 app.post('/api/discord/message', async (req, res) => {
   try {
-    const { from_user, from_platform, to_streamer, message, discord_channel_id } = req.body;
+    const { from_user, from_platform, to_streamer, message, discord_channel_id, webhook_url } = req.body;
     
     if (!from_user || !to_streamer || !message) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -1542,6 +1587,7 @@ app.post('/api/discord/message', async (req, res) => {
       message: message,
       command_id: null,
       discord_channel_id: discord_channel_id,
+      discord_webhook_url: webhook_url,
     });
     
     // Send message to Kick chat

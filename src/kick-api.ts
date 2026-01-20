@@ -748,6 +748,58 @@ export class KickAPI {
     }
   }
 
+  async getLivestreamData(channelSlug: string): Promise<{
+    is_live: boolean;
+    playback_url?: string;
+    session_title?: string;
+    viewer_count?: number;
+    category?: string;
+    thumbnail_url?: string;
+  } | null> {
+    try {
+      const endpoint = `https://kick.com/api/v2/channels/${channelSlug}/livestream`;
+      
+      const headers = {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      };
+      
+      const response = await axios.get(endpoint, {
+        headers: headers,
+        timeout: 10000,
+      });
+      
+      const data = response.data.data || response.data;
+      
+      if (!data || !data.id) {
+        // No active livestream
+        return {
+          is_live: false
+        };
+      }
+      
+      return {
+        is_live: data.is_live || true,
+        playback_url: data.playback_url,
+        session_title: data.session_title,
+        viewer_count: data.viewer_count,
+        category: data.categories?.[0]?.name || data.category?.name,
+        thumbnail_url: data.thumbnail?.url,
+      };
+    } catch (error: any) {
+      const status = error.response?.status;
+      if (status === 404) {
+        // Stream is offline
+        return {
+          is_live: false
+        };
+      }
+      console.error(`Livestream data error for ${channelSlug}:`, status, error.response?.data || error.message);
+      return null;
+    }
+  }
+
   // Check if user has enough channel points (workaround - may need to be implemented differently)
   async checkChannelPoints(
     channelSlug: string,

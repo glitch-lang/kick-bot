@@ -52,6 +52,7 @@ export interface MessageRequest {
   created_at: string;
   responded_at?: string;
   discord_channel_id?: string;
+  discord_webhook_url?: string;
 }
 
 export interface Cooldown {
@@ -131,6 +132,17 @@ export async function initDatabase() {
     // Column already exists or other error - that's okay
     if (!error.message.includes('duplicate column')) {
       console.log('discord_channel_id column already exists or migration not needed');
+    }
+  }
+
+  // Migration: Add discord_webhook_url column if it doesn't exist
+  try {
+    await dbRun(`ALTER TABLE message_requests ADD COLUMN discord_webhook_url TEXT`);
+    console.log('✅ Migration: Added discord_webhook_url column to message_requests');
+  } catch (error: any) {
+    // Column already exists or other error - that's okay
+    if (!error.message.includes('duplicate column')) {
+      console.log('discord_webhook_url column already exists or migration not needed');
     }
   }
 
@@ -259,9 +271,9 @@ export async function createCommand(data: Omit<Command, 'id' | 'created_at'>): P
 export async function createMessageRequest(data: Omit<MessageRequest, 'id' | 'created_at' | 'status' | 'responded_at'>): Promise<number> {
   return new Promise((resolve, reject) => {
     db.run(
-      `INSERT INTO message_requests (from_user, from_channel, to_streamer_id, message, command_id, status, discord_channel_id)
-       VALUES (?, ?, ?, ?, ?, 'pending', ?)`,
-      [data.from_user, data.from_channel, data.to_streamer_id, data.message, data.command_id, data.discord_channel_id || null],
+      `INSERT INTO message_requests (from_user, from_channel, to_streamer_id, message, command_id, status, discord_channel_id, discord_webhook_url)
+       VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`,
+      [data.from_user, data.from_channel, data.to_streamer_id, data.message, data.command_id, data.discord_channel_id || null, data.discord_webhook_url || null],
       function(err) {
         if (err) {
           reject(err);

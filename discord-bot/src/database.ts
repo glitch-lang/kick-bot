@@ -66,6 +66,16 @@ export class Database {
       )
     `);
     
+    await this.runQuery(`
+      CREATE TABLE IF NOT EXISTS discord_webhooks (
+        discord_channel_id TEXT PRIMARY KEY,
+        webhook_url TEXT NOT NULL,
+        guild_id TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
     console.log('✅ Discord bot database initialized');
   }
 
@@ -112,5 +122,28 @@ export class Database {
       'INSERT OR REPLACE INTO stream_notifications (discord_channel_id, kick_channel_name, notified_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
       [channelId, kickChannelName]
     );
+  }
+
+  async saveWebhook(channelId: string, webhookUrl: string, guildId: string) {
+    await this.runQuery(
+      'INSERT OR REPLACE INTO discord_webhooks (discord_channel_id, webhook_url, guild_id, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)',
+      [channelId, webhookUrl, guildId]
+    );
+  }
+
+  async getWebhook(channelId: string): Promise<string | null> {
+    const result: any = await this.getQuery(
+      'SELECT webhook_url FROM discord_webhooks WHERE discord_channel_id = ?',
+      [channelId]
+    );
+    return result ? result.webhook_url : null;
+  }
+
+  async removeWebhook(channelId: string) {
+    await this.runQuery('DELETE FROM discord_webhooks WHERE discord_channel_id = ?', [channelId]);
+  }
+
+  async getAllWebhooks(): Promise<Array<{discord_channel_id: string, webhook_url: string, guild_id: string}>> {
+    return await this.allQuery('SELECT * FROM discord_webhooks');
   }
 }
