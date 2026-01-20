@@ -1,7 +1,8 @@
-import { Client, GatewayIntentBits, EmbedBuilder, ChannelType, TextChannel } from 'discord.js';
+import { Client, GatewayIntentBits, EmbedBuilder, ChannelType, TextChannel, VoiceChannel } from 'discord.js';
 import axios from 'axios';
 import * as dotenv from 'dotenv';
 import { Database } from './database';
+import { StreamManager } from './stream-manager';
 
 dotenv.config();
 
@@ -10,10 +11,12 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildVoiceStates, // Required for voice channel access
   ],
 });
 
 const db = new Database();
+const streamManager = new StreamManager();
 const KICK_API_URL = process.env.KICK_BOT_API_URL || 'https://web-production-56232.up.railway.app';
 
 // Track which Discord channels are watching which Kick streams
@@ -74,6 +77,24 @@ client.on('messageCreate', async (message) => {
   // Command: !kick help
   if (content.startsWith('!kick help')) {
     await handleHelpCommand(message);
+    return;
+  }
+  
+  // Command: !kick stream <streamer>
+  if (content.startsWith('!kick stream ')) {
+    await handleStreamCommand(message);
+    return;
+  }
+  
+  // Command: !kick stopstream
+  if (content.startsWith('!kick stopstream')) {
+    await handleStopStreamCommand(message);
+    return;
+  }
+  
+  // Command: !kick streams
+  if (content.startsWith('!kick streams')) {
+    await handleActiveStreamsCommand(message);
     return;
   }
 });
@@ -270,6 +291,10 @@ async function handleHelpCommand(message: any) {
         value: '`!kick watch <streamer>` - Watch a streamer in this channel\n`!kick unwatch` - Stop watching',
       },
       {
+        name: '🎬 Live Streaming (NEW!)',
+        value: '`!kick stream <streamer>` - Stream Kick audio to voice channel\n`!kick stopstream` - Stop active stream\n`!kick streams` - Show active streams',
+      },
+      {
         name: '❓ Help',
         value: '`!kick help` - Show this help message',
       }
@@ -333,6 +358,103 @@ async function checkLiveStreams() {
       console.error(`Error checking stream for ${kickChannelName}:`, error);
     }
   }
+}
+
+async function handleStreamCommand(message: any) {
+  const parts = message.content.split(' ').slice(2); // Remove "!kick stream"
+  
+  if (parts.length === 0) {
+    await message.reply('❌ Usage: `!kick stream <streamer>`\nExample: `!kick stream realglitchdyeet`\n\n⚠️ **Note:** You must be in a voice channel first!');
+    return;
+  }
+  
+  const streamerName = parts[0].toLowerCase();
+  
+  // Check if user is in a voice channel
+  const member = message.member;
+  if (!member?.voice.channel) {
+    await message.reply('❌ You must join a voice channel first before I can stream!');
+    return;
+  }
+  
+  const voiceChannel = member.voice.channel as VoiceChannel;
+  
+  // Check if already streaming in this channel
+  if (streamManager.isStreaming(voiceChannel.id)) {
+    await message.reply('❌ Already streaming in this voice channel! Use `!kick stopstream` to stop first.');
+    return;
+  }
+  
+  await message.reply(`🎬 Starting stream of **${streamerName}**...\n\n⏳ Opening browser and connecting (this may take 10-20 seconds)...`);
+  
+  try {
+    const success = await streamManager.startStream(streamerName, voiceChannel);
+    
+    if (success) {
+      const embed = new EmbedBuilder()
+        .setColor(0xff0000)
+        .setTitle(`🔴 Now Streaming: ${streamerName}`)
+        .setDescription('Stream is now playing in this voice channel!')
+        .addFields(
+          { name: '🎧 Audio', value: 'Stream audio only (for now)', inline: true },
+          { name: '🔇 Bot Status', value: 'Self-deafened (won\'t hear you)', inline: true }
+        )
+        .setFooter({ text: 'Use !kick stopstream to stop' })
+        .setTimestamp();
+      
+      await message.reply({ embeds: [embed] });
+    } else {
+      await message.reply('❌ Failed to start stream. Check that the streamer exists and is live!');
+    }
+  } catch (error: any) {
+    console.error('Stream command error:', error);
+    await message.reply(`❌ Error starting stream: ${error.message}`);
+  }
+}
+
+async function handleStopStreamCommand(message: any) {
+  const member = message.member;
+  
+  if (!member?.voice.channel) {
+    await message.reply('❌ You must be in the voice channel with the stream to stop it!');
+    return;
+  }
+  
+  const voiceChannel = member.voice.channel as VoiceChannel;
+  
+  if (!streamManager.isStreaming(voiceChannel.id)) {
+    await message.reply('❌ No active stream in this voice channel!');
+    return;
+  }
+  
+  const success = await streamManager.stopStream(voiceChannel.id);
+  
+  if (success) {
+    await message.reply('✅ Stream stopped and disconnected from voice channel.');
+  } else {
+    await message.reply('❌ Failed to stop stream.');
+  }
+}
+
+async function handleActiveStreamsCommand(message: any) {
+  const activeStreams = streamManager.getActiveStreams();
+  
+  if (activeStreams.length === 0) {
+    await message.reply('📺 No active streams right now.');
+    return;
+  }
+  
+  const embed = new EmbedBuilder()
+    .setColor(0x667eea)
+    .setTitle('📺 Active Streams')
+    .setDescription(
+      activeStreams.map(s => 
+        `🔴 **${s.kickChannel}** streaming in <#${s.discordChannel}>`
+      ).join('\n')
+    )
+    .setTimestamp();
+  
+  await message.reply({ embeds: [embed] });
 }
 
 // Handle incoming responses from Kick streamers

@@ -202,6 +202,10 @@ export async function getAllActiveStreamers(): Promise<Streamer[]> {
   return (await dbAll('SELECT * FROM streamers WHERE is_active = 1') as Streamer[]);
 }
 
+export async function deleteStreamer(streamerId: number): Promise<void> {
+  await dbRun('DELETE FROM streamers WHERE id = ?', [streamerId]);
+}
+
 export async function getCommand(streamerId: number, commandName: string): Promise<Command | null> {
   return (await dbGet(
     'SELECT * FROM commands WHERE streamer_id = ? AND command_name = ? AND is_active = 1',

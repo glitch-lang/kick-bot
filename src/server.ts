@@ -1482,6 +1482,32 @@ app.post('/api/admin/token', (req, res) => {
   }
 });
 
+// Admin endpoint to delete a streamer (password protected)
+app.post('/api/admin/delete-streamer', async (req, res) => {
+  try {
+    const { password, streamer_id } = req.body;
+    const adminPassword = process.env.ADMIN_PASSWORD || 'changeme123';
+    
+    if (password !== adminPassword) {
+      return res.status(401).json({ error: 'Invalid password' });
+    }
+    
+    if (!streamer_id) {
+      return res.status(400).json({ error: 'Missing streamer_id' });
+    }
+    
+    // Delete streamer
+    await db.deleteStreamer(streamer_id);
+    
+    res.json({ 
+      success: true,
+      message: `Streamer ID ${streamer_id} deleted successfully`
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Discord Bot Integration Endpoints
 app.post('/api/discord/message', async (req, res) => {
   try {
