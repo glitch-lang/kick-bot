@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Bot Token</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .container {
+            max-width: 600px;
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        
+        h1 {
+            color: #667eea;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .warning {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 600;
+        }
+        
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        
+        button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 30px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+        }
+        
+        .token-display {
+            display: none;
+            background: #f7f9fc;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+        
+        .token-display.show {
+            display: block;
+        }
+        
+        .token-value {
+            background: #fff;
+            padding: 15px;
+            border-radius: 5px;
+            border: 2px solid #667eea;
+            font-family: 'Courier New', monospace;
+            word-break: break-all;
+            margin: 10px 0;
+        }
+        
+        .copy-btn {
+            padding: 10px 20px;
+            background: #10b981;
+            width: auto;
+            margin-top: 10px;
+        }
+        
+        .error {
+            background: #fee;
+            border-left: 4px solid #f44;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 5px;
+            color: #c00;
+            display: none;
+        }
+        
+        .error.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Admin - Bot Token Access</h1>
+        
+        <div class="warning">
+            <strong>⚠️ Security Warning:</strong> This page contains sensitive bot credentials. Only the bot owner should access this page.
+        </div>
+        
+        <div id="login-form">
+            <div class="form-group">
+                <label for="password">Admin Password</label>
+                <input type="password" id="password" placeholder="Enter admin password">
+            </div>
+            
+            <button onclick="viewToken()">🔓 View Bot Token</button>
+        </div>
+        
+        <div id="error" class="error"></div>
+        
+        <div id="token-display" class="token-display">
+            <h3>Bot Access Token:</h3>
+            <div class="token-value" id="token-value"></div>
+            <button class="copy-btn" onclick="copyToken()">📋 Copy Token</button>
+            
+            <div style="margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 5px;">
+                <strong>Important:</strong>
+                <ul style="margin: 10px 0; padding-left: 20px;">
+                    <li>Never share this token publicly</li>
+                    <li>Don't commit it to GitHub</li>
+                    <li>Keep it in your .env file only</li>
+                    <li>Regenerate if compromised</li>
+                </ul>
+            </div>
+        </div>
+        
+        <a href="/" style="display: block; text-align: center; margin-top: 20px; color: #667eea; text-decoration: none;">← Back to Dashboard</a>
+    </div>
+    
+    <script>
+        async function viewToken() {
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('error');
+            const tokenDisplay = document.getElementById('token-display');
+            const tokenValue = document.getElementById('token-value');
+            
+            if (!password) {
+                showError('Please enter the admin password');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/admin/token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    tokenValue.textContent = data.token;
+                    tokenDisplay.classList.add('show');
+                    errorDiv.classList.remove('show');
+                    document.getElementById('login-form').style.display = 'none';
+                } else {
+                    showError(data.error || 'Invalid password');
+                }
+            } catch (error) {
+                showError('Network error: ' + error.message);
+            }
+        }
+        
+        function copyToken() {
+            const tokenValue = document.getElementById('token-value').textContent;
+            navigator.clipboard.writeText(tokenValue).then(() => {
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '✅ Copied!';
+                btn.style.background = '#059669';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.background = '#10b981';
+                }, 2000);
+            });
+        }
+        
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+        }
+        
+        // Allow Enter key to submit
+        document.getElementById('password').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                viewToken();
+            }
+        });
+    </script>
+</body>
+</html>

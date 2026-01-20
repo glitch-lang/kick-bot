@@ -1461,6 +1461,27 @@ app.get('/api/setup/guide', (req, res) => {
   res.json(guide);
 });
 
+// Admin endpoint to view bot token (password protected)
+app.post('/api/admin/token', (req, res) => {
+  try {
+    const { password } = req.body;
+    const adminPassword = process.env.ADMIN_PASSWORD || 'changeme123'; // Set in .env!
+    
+    // Simple password check
+    if (password === adminPassword) {
+      const botToken = process.env.BOT_ACCESS_TOKEN || 'Not configured';
+      res.json({ 
+        token: botToken,
+        username: process.env.BOT_USERNAME || 'CrossTalkBot'
+      });
+    } else {
+      res.status(401).json({ error: 'Invalid password' });
+    }
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Test OAuth flow page
 app.get('/test-oauth', (req, res) => {
   res.sendFile(path.join(__dirname, '../test-oauth-flow.html'));

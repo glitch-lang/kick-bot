@@ -6,3 +6,5 @@ dist/
 data/
 *.db
 *.db-journal
+test-webhook.js
+dashboard-content.txt
