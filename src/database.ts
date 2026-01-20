@@ -51,6 +51,7 @@ export interface MessageRequest {
   status: string; // 'pending', 'responded', 'expired'
   created_at: string;
   responded_at?: string;
+  discord_channel_id?: string;
 }
 
 export interface Cooldown {
@@ -116,6 +117,7 @@ export async function initDatabase() {
       status TEXT DEFAULT 'pending',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       responded_at DATETIME,
+      discord_channel_id TEXT,
       FOREIGN KEY (to_streamer_id) REFERENCES streamers(id),
       FOREIGN KEY (command_id) REFERENCES commands(id)
     )
@@ -246,9 +248,9 @@ export async function createCommand(data: Omit<Command, 'id' | 'created_at'>): P
 export async function createMessageRequest(data: Omit<MessageRequest, 'id' | 'created_at' | 'status' | 'responded_at'>): Promise<number> {
   return new Promise((resolve, reject) => {
     db.run(
-      `INSERT INTO message_requests (from_user, from_channel, to_streamer_id, message, command_id, status)
-       VALUES (?, ?, ?, ?, ?, 'pending')`,
-      [data.from_user, data.from_channel, data.to_streamer_id, data.message, data.command_id],
+      `INSERT INTO message_requests (from_user, from_channel, to_streamer_id, message, command_id, status, discord_channel_id)
+       VALUES (?, ?, ?, ?, ?, 'pending', ?)`,
+      [data.from_user, data.from_channel, data.to_streamer_id, data.message, data.command_id, data.discord_channel_id || null],
       function(err) {
         if (err) {
           reject(err);

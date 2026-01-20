@@ -1541,6 +1541,7 @@ app.post('/api/discord/message', async (req, res) => {
       to_streamer_id: targetStreamer.id,
       message: message,
       command_id: null,
+      discord_channel_id: discord_channel_id,
     });
     
     // Send message to Kick chat

@@ -995,6 +995,16 @@ export class KickAPI {
       return false;
     }
   }
+
+  async sendDiscordWebhook(webhookUrl: string, data: { content: string; username?: string; avatar_url?: string }): Promise<void> {
+    try {
+      await axios.post(webhookUrl, data);
+      console.log('✅ Discord webhook sent successfully');
+    } catch (error: any) {
+      console.error('❌ Failed to send Discord webhook:', error.message);
+      throw error;
+    }
+  }
 }
 
 export const kickAPI = new KickAPI();
