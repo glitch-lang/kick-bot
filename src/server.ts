@@ -275,7 +275,7 @@ app.get('/auth/streamer', (req, res) => {
       client_id: clientId,
       redirect_uri: redirectUri,
       response_type: 'code',
-      scope: 'channel:read channel:write chat:read chat:write events:subscribe',
+      scope: 'user:read channel:read channel:write chat:read chat:write events:subscribe',
       state: state,
       code_challenge: codeChallenge,
       code_challenge_method: 'S256'
