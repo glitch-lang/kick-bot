@@ -281,7 +281,7 @@ app.get('/auth/streamer', (req, res) => {
       code_challenge_method: 'S256'
     });
     
-    const authUrl = `https://kick.com/oauth2/authorize?${params.toString()}`;
+    const authUrl = `https://id.kick.com/oauth/authorize?${params.toString()}`;
     console.log('🎯 STREAMER-ONLY registration started (will NOT show bot token page)');
     res.redirect(authUrl);
   } catch (error: any) {
