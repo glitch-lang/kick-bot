@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register for CrossTalk</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .container {
+            max-width: 600px;
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+        
+        h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 18px;
+        }
+        
+        .feature-list {
+            text-align: left;
+            margin: 30px 0;
+            background: #f7f9fc;
+            padding: 20px;
+            border-radius: 10px;
+        }
+        
+        .feature-list h3 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .feature-list ul {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .feature-list li {
+            padding: 8px 0;
+            color: #555;
+        }
+        
+        .feature-list li:before {
+            content: "✅ ";
+            margin-right: 8px;
+        }
+        
+        .connect-btn {
+            display: inline-block;
+            padding: 15px 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 30px;
+            font-size: 18px;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .connect-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+        
+        .steps {
+            text-align: left;
+            margin: 30px 0;
+            background: #fff3cd;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #ffc107;
+        }
+        
+        .steps h3 {
+            color: #856404;
+            margin-bottom: 15px;
+        }
+        
+        .steps ol {
+            padding-left: 20px;
+            color: #856404;
+        }
+        
+        .steps li {
+            margin-bottom: 10px;
+        }
+        
+        .home-link {
+            display: inline-block;
+            margin-top: 20px;
+            color: #667eea;
+            text-decoration: none;
+        }
+        
+        .home-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 CrossTalk Bot</h1>
+        <p class="subtitle">Connect streamers across Kick channels</p>
+        
+        <div class="feature-list">
+            <h3>Features:</h3>
+            <ul>
+                <li>Send messages between streamer chats</li>
+                <li>See who's online with <code>!online</code></li>
+                <li>Respond to messages with <code>!respond</code></li>
+                <li>Automatic cooldown system</li>
+                <li>Cross-channel viewer engagement</li>
+            </ul>
+        </div>
+        
+        <a href="/auth/kick" class="connect-btn">
+            🚀 Connect with Kick
+        </a>
+        
+        <div class="steps">
+            <h3>After Connecting:</h3>
+            <ol>
+                <li>Make CrossTalkBot a moderator: <code>/mod CrossTalkBot</code></li>
+                <li>Register your channel: <code>!setupchat</code> in your chat</li>
+                <li>Test it: <code>!ping</code> or <code>!streamers</code></li>
+                <li>Send messages: <code>!channelname message here</code></li>
+            </ol>
+        </div>
+        
+        <a href="/" class="home-link">← Back to Dashboard</a>
+    </div>
+</body>
+</html>
