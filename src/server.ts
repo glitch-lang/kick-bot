@@ -1482,6 +1482,71 @@ app.post('/api/admin/token', (req, res) => {
   }
 });
 
+// Discord Bot Integration Endpoints
+app.post('/api/discord/message', async (req, res) => {
+  try {
+    const { from_user, from_platform, to_streamer, message, discord_channel_id } = req.body;
+    
+    if (!from_user || !to_streamer || !message) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    // Get target streamer
+    const streamers = await db.getAllActiveStreamers();
+    const targetStreamer = streamers.find(s => 
+      s.channel_name.toLowerCase() === to_streamer.toLowerCase() || 
+      s.username.toLowerCase() === to_streamer.toLowerCase()
+    );
+    
+    if (!targetStreamer) {
+      return res.status(404).json({ error: 'Streamer not found', available: streamers.map(s => s.channel_name) });
+    }
+    
+    // Create message request
+    const requestId = await db.createMessageRequest({
+      from_user: from_user,
+      from_channel: from_platform || 'discord',
+      to_streamer_id: targetStreamer.id,
+      message: message,
+      command_id: null,
+    });
+    
+    // Send message to Kick chat
+    const notificationMessage = `📨 Message from @${from_user} (Discord): "${message}" | ID: ${requestId} | Reply: !respond ${requestId} <message> OR !reply <message>`;
+    await kickAPI.sendChatMessage(
+      targetStreamer.channel_name,
+      notificationMessage,
+      targetStreamer.access_token,
+      'bot'
+    );
+    
+    res.json({ 
+      success: true, 
+      request_id: requestId,
+      message: `Message sent to ${targetStreamer.username} on Kick` 
+    });
+  } catch (error: any) {
+    console.error('Discord message error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint for Discord bot to check responses
+app.get('/api/discord/responses/:request_id', async (req, res) => {
+  try {
+    const requestId = parseInt(req.params.request_id);
+    const request = await db.getRequestById(requestId);
+    
+    if (!request) {
+      return res.status(404).json({ error: 'Request not found' });
+    }
+    
+    res.json(request);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Test OAuth flow page
 app.get('/test-oauth', (req, res) => {
   res.sendFile(path.join(__dirname, '../test-oauth-flow.html'));
