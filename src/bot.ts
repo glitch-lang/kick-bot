@@ -102,6 +102,11 @@ export class KickBot {
     const username = message.user.username;
     const channelSlug = message.channel.slug;
     
+    console.log(`\n🎯 Bot received message in ${channelSlug}:`);
+    console.log(`   From: @${username}`);
+    console.log(`   Content: "${content}"`);
+    console.log(`   Message ID: ${message.id}`);
+    
     // Handle !setupchat command - register via chat
     if (content.startsWith('!setupchat')) {
       await this.handleSetupChatCommand(message, channelSlug);
@@ -248,13 +253,49 @@ export class KickBot {
 
   private async handleSetupChatCommand(message: KickChatMessage, channelSlug: string) {
     const userId = message.user.username;
-    console.log(`!setupchat received from @${userId} in channel: ${channelSlug}`);
+    console.log(`\n🔔 !setupchat received from @${userId} in channel: ${channelSlug}`);
+    console.log(`📨 Message content: "${message.content}"`);
+    console.log(`👤 User ID: ${message.user.id}, Username: ${message.user.username}`);
+    
+    // Get channel info first to check if user is broadcaster
+    let channelInfo;
+    try {
+      console.log(`Getting channel info for: ${channelSlug}`);
+      channelInfo = await kickAPI.getChannelInfo(channelSlug);
+      if (!channelInfo) {
+        console.error(`Could not get channel info for: ${channelSlug}`);
+        const botToken = await this.getBotToken(channelSlug);
+        if (botToken) {
+          await this.sendMessage(channelSlug, botToken, `@${userId} Could not get channel info. Please try again.`);
+        }
+        return;
+      }
+    } catch (error: any) {
+      console.error(`Error getting channel info:`, error);
+      const botToken = await this.getBotToken(channelSlug);
+      if (botToken) {
+        await this.sendMessage(channelSlug, botToken, `@${userId} Error getting channel info. Please try again.`);
+      }
+      return;
+    }
+    
+    // Check if user is the broadcaster (channel owner)
+    // Channel slug should match broadcaster username (case-insensitive)
+    const isBroadcaster = userId.toLowerCase() === channelSlug.toLowerCase();
+    
+    if (!isBroadcaster) {
+      const botToken = await this.getBotToken(channelSlug);
+      if (botToken) {
+        await this.sendMessage(channelSlug, botToken, `@${userId} Only the channel broadcaster can use !setupchat. Please ask the broadcaster to run this command.`);
+      }
+      return;
+    }
     
     // Check if already registered
     const existing = await db.getStreamerByChannelName(channelSlug);
     if (existing) {
-      // Try to send message - need to get streamer's token or use bot token
-      const botToken = process.env.BOT_ACCESS_TOKEN || '';
+      // Try to send message - use OAuth token from database or bot token
+      const botToken = await this.getBotToken(channelSlug);
       if (botToken) {
         await this.sendMessage(channelSlug, botToken, `@${userId} This channel is already registered! Use !cooldownchat <seconds> to set cooldown.`);
       }
@@ -263,17 +304,6 @@ export class KickBot {
     
     // Get channel info to get username
     try {
-      console.log(`Getting channel info for: ${channelSlug}`);
-      const channelInfo = await kickAPI.getChannelInfo(channelSlug);
-      if (!channelInfo) {
-        console.error(`Could not get channel info for: ${channelSlug}`);
-        const botToken = process.env.BOT_ACCESS_TOKEN || '';
-        if (botToken) {
-          await this.sendMessage(channelSlug, botToken, `@${userId} Could not get channel info. Please try again.`);
-        }
-        return;
-      }
-      
       console.log(`Channel info retrieved: ${JSON.stringify(channelInfo)}`);
       
       // Get username from channel slug (slug is usually the username)
@@ -299,12 +329,12 @@ export class KickBot {
       // Reload streamers to include new one
       await this.loadStreamers();
       
-      const botToken = process.env.BOT_ACCESS_TOKEN || '';
+      const botToken = await this.getBotToken(channelSlug);
       if (botToken) {
         console.log(`Sending success message to channel: ${channelSlug}`);
         await this.sendMessage(channelSlug, botToken, `@${userId} ✅ Channel registered! Your command is: !${channelSlug} | Default cooldown: 60s | Use !cooldownchat <seconds> to change.`);
       } else {
-        console.error('BOT_ACCESS_TOKEN not set!');
+        console.error('❌ No valid token available for sending message!');
       }
     } catch (error: any) {
       console.error('Error setting up chat:', error);
@@ -314,6 +344,18 @@ export class KickBot {
   
   private async handleCooldownChatCommand(message: KickChatMessage, channelSlug: string, content: string) {
     const userId = message.user.username;
+    
+    // Get channel info to check if user is broadcaster
+    const channelInfo = await kickAPI.getChannelInfo(channelSlug);
+    const isBroadcaster = userId.toLowerCase() === channelSlug.toLowerCase();
+    
+    if (!isBroadcaster) {
+      const botToken = process.env.BOT_ACCESS_TOKEN || '';
+      if (botToken) {
+        await this.sendMessage(channelSlug, botToken, `@${userId} Only the channel broadcaster can use !cooldownchat.`);
+      }
+      return;
+    }
     
     // Get streamer
     const streamer = await db.getStreamerByChannelName(channelSlug);
@@ -350,7 +392,7 @@ export class KickBot {
     const cooldownMinutes = Math.floor(cooldownSeconds / 60);
     const cooldownText = cooldownMinutes > 0 ? `${cooldownMinutes} minute${cooldownMinutes > 1 ? 's' : ''}` : `${cooldownSeconds} second${cooldownSeconds > 1 ? 's' : ''}`;
     
-    const botToken = process.env.BOT_ACCESS_TOKEN || '';
+    const botToken = await this.getBotToken(channelSlug);
     if (botToken) {
       await this.sendMessage(channelSlug, botToken, `@${userId} ✅ Cooldown updated to ${cooldownText}!`);
     }
@@ -607,6 +649,29 @@ export class KickBot {
     );
   }
 
+  // Get the best available bot token for a channel (OAuth token or bot token)
+  private async getBotToken(channelSlug: string): Promise<string | null> {
+    try {
+      // First, try to get OAuth token from database
+      const streamer = await db.getStreamerByChannelName(channelSlug);
+      if (streamer && streamer.access_token && !streamer.access_token.startsWith('bot_token_')) {
+        return streamer.access_token;
+      }
+      
+      // Fall back to bot token from environment
+      const botToken = process.env.BOT_ACCESS_TOKEN;
+      if (botToken) {
+        return botToken;
+      }
+      
+      console.warn(`No token available for channel ${channelSlug}`);
+      return null;
+    } catch (error) {
+      console.error(`Error getting bot token for ${channelSlug}:`, error);
+      return process.env.BOT_ACCESS_TOKEN || null;
+    }
+  }
+
   private async sendMessage(channelSlug: string, accessToken: string, message: string): Promise<boolean> {
     try {
       // If token is a placeholder, try to use bot token
@@ -625,16 +690,15 @@ export class KickBot {
     }
   }
 
+  private lastMessageIds: Map<string, Set<string>> = new Map();
+  private pollingEnabled: Map<string, boolean> = new Map(); // Track if polling is needed per channel
+  
   private startPolling() {
-    // Poll for chat messages every 5 seconds
-    // In production, you'd use WebSocket or webhooks
-    this.pollingInterval = setInterval(async () => {
-      for (const [channelSlug, listener] of this.listeners.entries()) {
-        // In a real implementation, you'd fetch recent chat messages
-        // For now, this is a placeholder
-        // You would need to implement actual chat polling or use Kick's webhook system
-      }
-    }, 5000);
+    // NOTE: Chat message polling doesn't work - Kick doesn't have a public chat messages API
+    // We rely entirely on Pusher WebSocket for real-time chat messages
+    // This polling function is kept as a placeholder but does nothing
+    console.log('📡 Chat polling disabled - using Pusher WebSocket only');
+    // No polling interval - we rely on Pusher WebSocket connections
   }
   
   // Connect to any channel (for !setupchat)
@@ -674,17 +738,120 @@ export class KickBot {
     return this.isStarted;
   }
   
+  // Check if channel is connected
+  isChannelConnected(channelSlug: string): boolean {
+    return this.listeners.has(channelSlug);
+  }
+  
   // Public method to handle incoming chat messages (called from WebSocket or API)
   async handleIncomingMessage(channelSlug: string, message: KickChatMessage) {
     // Ensure channel is connected
     if (!this.listeners.has(channelSlug)) {
+      console.log(`Channel ${channelSlug} not connected, connecting now...`);
       await this.connectToAnyChannel(channelSlug);
+      // Wait a moment for connection to establish
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
     
     // Get listener for this channel
     const listener = this.listeners.get(channelSlug);
     if (listener) {
       await listener.onMessage(message);
+    } else {
+      console.warn(`No listener found for channel ${channelSlug} after connection attempt`);
+    }
+  }
+
+  // Public method to handle webhook messages (called from webhook endpoint)
+  async handleWebhookMessage(message: KickChatMessage) {
+    const channelSlug = message.channel.slug;
+    
+    console.log(`\n📬 Processing webhook message from ${channelSlug}`);
+    console.log(`   From: ${message.user.username}`);
+    console.log(`   Message: "${message.content}"`);
+    
+    // Ensure channel is connected
+    if (!this.listeners.has(channelSlug)) {
+      console.log(`Channel ${channelSlug} not connected, connecting now...`);
+      await this.connectToAnyChannel(channelSlug);
+      // Wait a moment for connection to establish
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    
+    // Get listener for this channel
+    const listener = this.listeners.get(channelSlug);
+    if (listener) {
+      await listener.onMessage(message);
+    } else {
+      console.warn(`No listener found for channel ${channelSlug} after connection attempt`);
+      // Try to process the message anyway (for commands)
+      await this.processCommand(channelSlug, message);
+    }
+  }
+
+  // Process commands directly (used for webhook messages when no listener exists)
+  private async processCommand(channelSlug: string, message: KickChatMessage) {
+    const content = message.content.trim();
+    
+    // Ignore messages from the bot itself
+    if (message.user.username.toLowerCase() === process.env.BOT_USERNAME?.toLowerCase()) {
+      return;
+    }
+    
+    // Check if it's a command
+    if (!content.startsWith('!')) {
+      return;
+    }
+    
+    const [command, ...args] = content.slice(1).split(' ');
+    const commandLower = command.toLowerCase();
+    
+    console.log(`\n🎮 Command received: !${commandLower}`);
+    console.log(`   From: ${message.user.username}`);
+    console.log(`   Args: ${args.join(' ')}`);
+    
+    try {
+      // Get bot token for sending messages
+      const token = await this.getBotToken(channelSlug);
+      if (!token) {
+        console.error('No bot token available');
+        return;
+      }
+      
+      // Process the command
+      switch (commandLower) {
+        case 'ping':
+          await kickAPI.sendChatMessage(channelSlug, `@${message.user.username} Pong! 🏓`, token);
+          break;
+          
+        case 'commands':
+        case 'help':
+          await kickAPI.sendChatMessage(
+            channelSlug,
+            `@${message.user.username} Available commands: !ping, !help, !commands`,
+            token
+          );
+          break;
+          
+        case 'uptime':
+          const uptime = Math.floor(process.uptime());
+          const hours = Math.floor(uptime / 3600);
+          const minutes = Math.floor((uptime % 3600) / 60);
+          const seconds = uptime % 60;
+          await kickAPI.sendChatMessage(
+            channelSlug,
+            `@${message.user.username} Bot uptime: ${hours}h ${minutes}m ${seconds}s`,
+            token
+          );
+          break;
+          
+        default:
+          // Unknown command - ignore it
+          console.log(`   Unknown command: !${commandLower}`);
+          break;
+      }
+    } catch (error) {
+      console.error(`Error processing command !${commandLower}:`, error);
     }
   }
 

@@ -1,0 +1,13 @@
+node_modules/
+.git/
+.env
+*.log
+.DS_Store
+dist/
+build/
+.vscode/
+.idea/
+*.tmp
+*.temp
+data/*.db
+data/*.db-journal

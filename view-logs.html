@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Server Logs Viewer</title>
+    <style>
+        body { font-family: 'Courier New', monospace; padding: 20px; background: #1e1e1e; color: #d4d4d4; }
+        .log { padding: 5px; margin: 2px 0; border-left: 3px solid #007acc; }
+        .log.error { border-left-color: #f48771; background: #3a1f1f; }
+        .log.log { border-left-color: #4ec9b0; }
+        .timestamp { color: #858585; font-size: 0.9em; }
+        .message { margin-left: 10px; }
+        .controls { margin-bottom: 20px; }
+        input { padding: 8px; background: #252526; color: #d4d4d4; border: 1px solid #3e3e42; border-radius: 3px; }
+        button { padding: 8px 15px; background: #007acc; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #005a9e; }
+        .auto-refresh { margin-left: 10px; }
+    </style>
+</head>
+<body>
+    <h1>📋 Server Logs Viewer</h1>
+    
+    <div class="controls">
+        <input type="text" id="filter" placeholder="Filter logs (e.g., 'OAuth', 'error')" style="width: 300px;">
+        <button onclick="loadLogs()">Refresh</button>
+        <label class="auto-refresh">
+            <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()"> Auto-refresh (2s)
+        </label>
+    </div>
+    
+    <div id="logs"></div>
+    
+    <script>
+        let autoRefreshInterval;
+        
+        function loadLogs() {
+            const filter = document.getElementById('filter').value;
+            const url = filter ? `/api/logs?filter=${encodeURIComponent(filter)}` : '/api/logs';
+            
+            fetch(url)
+                .then(r => r.json())
+                .then(data => {
+                    const logsDiv = document.getElementById('logs');
+                    logsDiv.innerHTML = '';
+                    
+                    if (data.logs.length === 0) {
+                        logsDiv.innerHTML = '<p>No logs found</p>';
+                        return;
+                    }
+                    
+                    data.logs.forEach(log => {
+                        const logDiv = document.createElement('div');
+                        logDiv.className = `log ${log.type}`;
+                        logDiv.innerHTML = `
+                            <span class="timestamp">[${new Date(log.timestamp).toLocaleTimeString()}]</span>
+                            <span class="message">${escapeHtml(log.message)}</span>
+                        `;
+                        logsDiv.appendChild(logDiv);
+                    });
+                    
+                    // Scroll to bottom
+                    logsDiv.scrollTop = logsDiv.scrollHeight;
+                })
+                .catch(err => {
+                    document.getElementById('logs').innerHTML = `<p style="color: #f48771;">Error: ${err.message}</p>`;
+                });
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function toggleAutoRefresh() {
+            const checkbox = document.getElementById('autoRefresh');
+            if (checkbox.checked) {
+                autoRefreshInterval = setInterval(loadLogs, 2000);
+            } else {
+                clearInterval(autoRefreshInterval);
+            }
+        }
+        
+        // Load logs on page load
+        loadLogs();
+        
+        // Auto-refresh by default
+        document.getElementById('autoRefresh').checked = true;
+        toggleAutoRefresh();
+    </script>
+</body>
+</html>

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OAuth Flow Test</title>
+    <style>
+        body { font-family: Arial; padding: 20px; max-width: 800px; margin: 0 auto; }
+        .button { background: #4CAF50; color: white; padding: 15px 30px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; margin: 10px 0; }
+        .button:hover { background: #45a049; }
+        .info { background: #e7f3ff; padding: 15px; border-radius: 5px; margin: 20px 0; }
+        .error { background: #ffebee; padding: 15px; border-radius: 5px; margin: 20px 0; color: #c62828; }
+        .success { background: #e8f5e9; padding: 15px; border-radius: 5px; margin: 20px 0; color: #2e7d32; }
+        code { background: #f5f5f5; padding: 2px 6px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <h1>🔐 OAuth Flow Test</h1>
+    
+    <div class="info">
+        <h3>Current Configuration:</h3>
+        <p><strong>Redirect URI:</strong> <code id="redirect-uri">Loading...</code></p>
+        <p><strong>Client ID:</strong> <code id="client-id">Loading...</code></p>
+    </div>
+
+    <h2>Test OAuth Flow</h2>
+    <button class="button" onclick="testOAuth()">🚀 Start OAuth Flow</button>
+    <button class="button" onclick="checkDiagnostic()">🔍 Check Diagnostic</button>
+    
+    <div id="status"></div>
+    
+    <h2>Manual Test</h2>
+    <p>Or visit directly:</p>
+    <p><a href="/auth/kick" target="_blank">http://localhost:3000/auth/kick</a></p>
+
+    <script>
+        async function loadConfig() {
+            try {
+                const response = await fetch('/api/oauth/diagnostic');
+                const data = await response.json();
+                document.getElementById('redirect-uri').textContent = data.redirectUri;
+                document.getElementById('client-id').textContent = data.clientId;
+            } catch (error) {
+                document.getElementById('status').innerHTML = `<div class="error">Error loading config: ${error.message}</div>`;
+            }
+        }
+
+        function testOAuth() {
+            window.location.href = '/auth/kick';
+        }
+
+        async function checkDiagnostic() {
+            try {
+                const response = await fetch('/api/oauth/diagnostic');
+                const data = await response.json();
+                const statusDiv = document.getElementById('status');
+                statusDiv.innerHTML = `
+                    <div class="info">
+                        <h3>Diagnostic Results:</h3>
+                        <p><strong>Client ID:</strong> ${data.clientId}</p>
+                        <p><strong>Client Secret:</strong> ${data.clientSecret}</p>
+                        <p><strong>Redirect URI:</strong> <code>${data.redirectUri}</code></p>
+                        <p><strong>Expected in Kick App:</strong> <code>${data.expectedInKickApp}</code></p>
+                        <h4>Instructions:</h4>
+                        <ol>
+                            ${data.instructions.map(i => `<li>${i}</li>`).join('')}
+                        </ol>
+                    </div>
+                `;
+            } catch (error) {
+                document.getElementById('status').innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        // Check URL params for OAuth result
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        const error = urlParams.get('error');
+        
+        if (code) {
+            document.getElementById('status').innerHTML = `
+                <div class="success">
+                    <h3>✅ Authorization Code Received!</h3>
+                    <p>Code: <code>${code.substring(0, 20)}...</code></p>
+                    <p>Check server logs for token exchange.</p>
+                </div>
+            `;
+        } else if (error) {
+            document.getElementById('status').innerHTML = `
+                <div class="error">
+                    <h3>❌ OAuth Error</h3>
+                    <p>Error: ${error}</p>
+                </div>
+            `;
+        }
+
+        loadConfig();
+    </script>
+</body>
+</html>

@@ -162,6 +162,78 @@ startBackgroundServices();
 // Keep process alive forever
 console.log('✅ Process started, keeping alive...');
 
+// Webhook endpoint for receiving Kick events (MUST be BEFORE bodyParser.json middleware applies)
+app.post('/webhooks/kick', express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    // Get the raw body for signature verification
+    const rawBody = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : JSON.stringify(req.body);
+    const signature = req.headers['x-kick-signature'] as string;
+    const webhookSecret = process.env.WEBHOOK_SECRET || '';
+
+    console.log('\n📨 Webhook received from Kick');
+    console.log(`   Signature: ${signature || 'None'}`);
+    console.log(`   Body length: ${rawBody.length} bytes`);
+    console.log(`   Body type: ${typeof req.body}`);
+
+    // Verify the signature
+    if (signature && webhookSecret) {
+      const isValid = kickAPI.verifyWebhookSignature(rawBody, signature, webhookSecret);
+      if (!isValid) {
+        console.error('❌ Invalid webhook signature - rejecting request');
+        return res.status(401).json({ error: 'Invalid signature' });
+      }
+      console.log('✅ Webhook signature verified');
+    } else if (!signature) {
+      console.warn('⚠️ No signature provided - accepting anyway for testing');
+    }
+
+    // Parse the event
+    const event = JSON.parse(rawBody);
+    console.log(`   Event Type: ${event.type || event.event_type}`);
+    
+    // Handle chat message events
+    if (event.type === 'chat.message.sent' || event.event_type === 'chat.message.sent') {
+      const messageData = event.data || event.payload;
+      
+      if (!messageData) {
+        console.error('❌ No message data in event');
+        return res.status(400).json({ error: 'No message data' });
+      }
+
+      console.log(`   From: ${messageData.sender?.username || 'Unknown'}`);
+      console.log(`   Message: "${messageData.content || messageData.message}"`);
+      console.log(`   Channel: ${messageData.channel?.slug || messageData.chatroom_id}`);
+
+      // Pass the message to the bot for command processing
+      try {
+        await bot.handleWebhookMessage({
+          id: messageData.id || messageData.message_id || Date.now().toString(),
+          content: messageData.content || messageData.message || '',
+          type: 'message',
+          user: {
+            id: messageData.sender?.id || 0,
+            username: messageData.sender?.username || 'Unknown',
+            slug: messageData.sender?.slug || messageData.sender?.username || 'unknown'
+          },
+          channel: {
+            id: messageData.chatroom_id || messageData.channel?.id || 0,
+            slug: messageData.channel?.slug || messageData.channel_slug || ''
+          },
+          created_at: messageData.created_at || new Date().toISOString()
+        });
+      } catch (error) {
+        console.error('Error handling webhook message:', error);
+      }
+    }
+
+    // Respond with 200 OK
+    res.status(200).json({ success: true });
+  } catch (error: any) {
+    console.error('Error processing webhook:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // OAuth Routes
 app.get('/auth/kick', (req, res) => {
   const clientId = process.env.KICK_CLIENT_ID;
@@ -172,12 +244,17 @@ app.get('/auth/kick', (req, res) => {
     return res.redirect(`/?error=${encodeURIComponent('Bot is not yet configured. Please contact the administrator.')}`);
   }
   
-  console.log('Initiating OAuth flow...');
+  console.log('\n🚀 Initiating OAuth flow...');
   console.log('Client ID:', clientId ? 'Set' : 'Missing');
   console.log('Redirect URI:', redirectUri);
   console.log('⚠️ IMPORTANT: Make sure this redirect URI matches EXACTLY in your Kick app settings!');
   console.log('⚠️ Check: https://dev.kick.com - Your app settings must have:');
   console.log('   Redirect URI:', redirectUri);
+  console.log('\n📋 OAuth Requirements (from Kick docs):');
+  console.log('   - Endpoint: https://id.kick.com/oauth/authorize');
+  console.log('   - Must use PKCE (code_challenge + code_challenge_method=S256)');
+  console.log('   - Must include: client_id, redirect_uri, response_type=code, scope, state');
+  console.log('   - Redirect URI must match EXACTLY (protocol, domain, port, path)');
   
   // Generate state for CSRF protection
   const crypto = require('crypto');
@@ -186,23 +263,56 @@ app.get('/auth/kick', (req, res) => {
   // Generate PKCE code verifier and challenge (REQUIRED by Kick)
   const { codeVerifier, codeChallenge } = kickAPI.generatePKCE();
   
+  console.log('\n🚀 Starting OAuth Flow:');
+  console.log('State generated:', state.substring(0, 20) + '...');
+  console.log('Code verifier generated:', codeVerifier.substring(0, 20) + '...');
+  console.log('Code challenge:', codeChallenge.substring(0, 20) + '...');
+  
   // Store state and code_verifier in cookies (needed for token exchange)
-  res.cookie('oauth_state', state, { httpOnly: true, maxAge: 600000 }); // 10 minutes
-  res.cookie('oauth_code_verifier', codeVerifier, { httpOnly: true, maxAge: 600000 }); // 10 minutes
+  // Use SameSite=None and Secure for cross-site requests, or Lax for same-site
+  const cookieOptions = {
+    httpOnly: true,
+    maxAge: 600000, // 10 minutes
+    sameSite: 'lax' as const, // Allow cookie to be sent on redirects
+    secure: false, // Set to true in production with HTTPS
+  };
+  
+  res.cookie('oauth_state', state, cookieOptions);
+  res.cookie('oauth_code_verifier', codeVerifier, cookieOptions);
+  
+  // Also store in memory as fallback (for debugging)
+  if (!(global as any).oauthSessions) {
+    (global as any).oauthSessions = new Map();
+  }
+  (global as any).oauthSessions.set(state, { codeVerifier, timestamp: Date.now() });
+  console.log('💾 Stored code_verifier in cookie and memory (fallback)');
   
   const { url: authUrl } = kickAPI.getAuthUrl(clientId, redirectUri, state, codeChallenge);
-  console.log('Redirecting to:', authUrl);
-  console.log('Full URL to test manually:', authUrl);
+  console.log('\n📤 Redirecting user to authorization page...');
+  console.log('Authorization URL:', authUrl);
   res.redirect(authUrl);
 });
 
 app.get('/auth/kick/callback', async (req, res) => {
   const { code, error, error_description, state } = req.query;
   
+  // Log all query parameters for debugging
+  console.log('\n🔔 OAuth Callback Received');
+  console.log('Full URL:', req.protocol + '://' + req.get('host') + req.originalUrl);
+  console.log('Query params:', JSON.stringify(req.query, null, 2));
+  console.log('Has code:', !!code);
+  console.log('Has error:', !!error);
+  console.log('Has state:', !!state);
+  
   // Verify state parameter (CSRF protection)
   const storedState = req.cookies?.oauth_state;
+  console.log('Stored state:', storedState);
+  console.log('Received state:', state);
+  
   if (state && storedState && state !== storedState) {
-    console.error('State mismatch - possible CSRF attack');
+    console.error('❌ State mismatch - possible CSRF attack');
+    console.error('Expected:', storedState);
+    console.error('Received:', state);
     return res.redirect('/?error=invalid_state');
   }
   
@@ -213,13 +323,20 @@ app.get('/auth/kick/callback', async (req, res) => {
   if (error) {
     const errorMsg = typeof error === 'string' ? error : String(error);
     const errorDesc = typeof error_description === 'string' ? error_description : (error_description ? String(error_description) : errorMsg);
-    console.error('OAuth error:', errorMsg, errorDesc);
+    console.error('❌ OAuth error received:', errorMsg);
+    console.error('Error description:', errorDesc);
+    console.error('Full error response:', JSON.stringify(req.query, null, 2));
     return res.redirect(`/?error=${encodeURIComponent(errorDesc)}`);
   }
   
   if (!code) {
-    console.error('No authorization code received');
-    console.error('Query params:', req.query);
+    console.error('❌ No authorization code received');
+    console.error('All query params:', JSON.stringify(req.query, null, 2));
+    console.error('Expected redirect URI:', process.env.KICK_REDIRECT_URI || `http://localhost:${PORT}/auth/kick/callback`);
+    console.error('\n💡 Troubleshooting:');
+    console.error('1. Check that redirect URI in Kick app matches exactly:', process.env.KICK_REDIRECT_URI || `http://localhost:${PORT}/auth/kick/callback`);
+    console.error('2. Make sure you clicked "Authorize" on the Kick authorization page');
+    console.error('3. Check browser console for any errors');
     return res.redirect('/?error=no_code');
   }
   
@@ -235,14 +352,42 @@ app.get('/auth/kick/callback', async (req, res) => {
     }
     
     // Get code_verifier from cookie (required for PKCE)
-    const codeVerifier = req.cookies?.oauth_code_verifier;
+    console.log('\n🔍 Checking for code_verifier...');
+    console.log('All cookies:', JSON.stringify(req.cookies, null, 2));
+    console.log('Cookie names:', Object.keys(req.cookies || {}));
+    
+    let codeVerifier = req.cookies?.oauth_code_verifier;
+    
+    // Fallback: Try to get from memory using state
+    if (!codeVerifier && state) {
+      console.log('⚠️ Code verifier not in cookie, trying memory fallback...');
+      const session = (global as any).oauthSessions?.get(state);
+      if (session && Date.now() - session.timestamp < 600000) { // 10 minutes
+        codeVerifier = session.codeVerifier;
+        console.log('✅ Retrieved code_verifier from memory fallback');
+        // Clean up old sessions
+        (global as any).oauthSessions.delete(state);
+      }
+    }
+    
+    console.log('Code verifier found:', !!codeVerifier);
+    console.log('Code verifier value:', codeVerifier ? codeVerifier.substring(0, 20) + '...' : 'MISSING');
+    
     if (!codeVerifier) {
-      console.error('Code verifier missing from cookie');
+      console.error('❌ Code verifier missing from both cookie and memory');
+      console.error('This usually means:');
+      console.error('  1. Cookie expired (10 minute timeout)');
+      console.error('  2. Cookie was cleared by browser');
+      console.error('  3. Cookie parser not working');
+      console.error('  4. Different browser/session used');
+      console.error('  5. State mismatch (different state than when cookie was set)');
+      console.error('\n💡 Solution: Try the OAuth flow again immediately');
       return res.redirect('/?error=missing_code_verifier');
     }
     
     // Clear the code verifier cookie
     res.clearCookie('oauth_code_verifier');
+    console.log('✅ Code verifier retrieved successfully');
     
     const tokens = await kickAPI.exchangeCodeForToken(
       code as string,
@@ -337,7 +482,10 @@ app.get('/auth/kick/callback', async (req, res) => {
               headers: {
                 Authorization: `Bearer ${tokens.access_token}`,
                 'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
               },
+              timeout: 10000,
             });
             console.log(`✅ ${endpoint} responded:`, JSON.stringify(testResponse.data, null, 2));
             
@@ -454,6 +602,39 @@ app.get('/auth/kick/callback', async (req, res) => {
       return res.redirect(`/bot-token?token_id=${tokenDisplayId}`);
     }
     
+    // Subscribe to chat events for this channel
+    try {
+      const channelInfo = await kickAPI.getChannelInfo(userInfo.slug);
+      if (channelInfo && channelInfo.chatroom_id) {
+        const chatroomId = channelInfo.chatroom_id;
+        const webhookUrl = `${process.env.WEBHOOK_BASE_URL || 'http://localhost:3000'}/webhooks/kick`;
+        const webhookSecret = process.env.WEBHOOK_SECRET || '';
+        
+        console.log(`\n📡 Attempting to subscribe to chat events for ${userInfo.slug}...`);
+        const subscriptionResult = await kickAPI.subscribeToChannelChat(
+          chatroomId,
+          webhookUrl,
+          webhookSecret,
+          tokens.access_token
+        );
+        
+        if (subscriptionResult.success) {
+          console.log('✅ Successfully subscribed to chat events!');
+          // Store subscription ID in database for later management
+          if (streamer && subscriptionResult.subscriptionId) {
+            // TODO: Add subscription_id column to database and store it
+            console.log(`Subscription ID: ${subscriptionResult.subscriptionId}`);
+          }
+        } else {
+          console.error('⚠️ Failed to subscribe to chat events:', subscriptionResult.error);
+          console.error('Bot will still work for sending messages, but cannot listen to chat');
+        }
+      }
+    } catch (error: any) {
+      console.error('⚠️ Error subscribing to chat events:', error.message);
+      console.error('Bot will still work for sending messages, but cannot listen to chat');
+    }
+    
     // Redirect to home page with dashboard tab and streamer_id
     // Store streamer_id in session/cookie for persistence
     res.cookie('streamer_id', streamer?.id?.toString(), { httpOnly: false, maxAge: 86400000 }); // 24 hours
@@ -475,6 +656,39 @@ app.get('/api/streamers', async (req, res) => {
       created_at: s.created_at,
     })));
   } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// API endpoint to get online status of all streamers
+app.get('/api/streamers/online', async (req, res) => {
+  try {
+    const streamers = await db.getAllActiveStreamers();
+    const onlineStatus = await Promise.all(
+      streamers.map(async (streamer) => {
+        try {
+          const isLive = await kickAPI.isStreamerLive(streamer.channel_name);
+          return {
+            id: streamer.id,
+            username: streamer.username,
+            channel_name: streamer.channel_name,
+            is_online: isLive,
+          };
+        } catch (error: any) {
+          console.error(`Error checking status for ${streamer.channel_name}:`, error);
+          return {
+            id: streamer.id,
+            username: streamer.username,
+            channel_name: streamer.channel_name,
+            is_online: false,
+            error: error.message,
+          };
+        }
+      })
+    );
+    res.json(onlineStatus);
+  } catch (error: any) {
+    console.error('Error getting online streamers:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -788,11 +1002,165 @@ app.post('/api/bot/connect', async (req, res) => {
     res.json({ 
       success: true, 
       message: `Bot connected to channel: ${channelSlug}. You can now use !setupchat in your chat.`,
-      channelSlug 
+      channelSlug,
+      instructions: [
+        `1. Make sure the bot is a moderator: Type "/mod CrossTalkBot" in your chat`,
+        `2. Then type "!setupchat" to register your channel`,
+        `3. Check the bot logs to see if it's receiving messages`
+      ]
     });
   } catch (error: any) {
     console.error('Error connecting bot to channel:', error);
     res.status(500).json({ error: error.message || 'Failed to connect bot to channel' });
+  }
+});
+
+// API endpoint to check bot connection status
+// Test endpoint to send a message using OAuth token (GET version for dashboard)
+app.get('/api/bot/test-send', async (req, res) => {
+  try {
+    const { channel, message } = req.query;
+    
+    if (!channel || !message) {
+      return res.status(400).json({ 
+        error: 'Missing channel or message',
+        usage: 'GET /api/bot/test-send?channel=realglitchdyeet&message=test'
+      });
+    }
+    
+    // Get OAuth token from database
+    const streamers = await db.getAllActiveStreamers();
+    const streamer = streamers.find(s => 
+      s.channel_name.toLowerCase() === (channel as string).toLowerCase() ||
+      s.username.toLowerCase() === (channel as string).toLowerCase()
+    );
+    
+    if (!streamer || !streamer.access_token || streamer.access_token.startsWith('bot_token_')) {
+      // Try to get any OAuth token
+      const streamerWithToken = streamers.find(s => 
+        s.access_token && !s.access_token.startsWith('bot_token_') && s.access_token.length > 20
+      );
+      
+      if (!streamerWithToken) {
+        return res.status(400).json({ 
+          error: 'No OAuth token found',
+          message: 'Complete OAuth registration first at /auth/kick',
+          streamers: streamers.map(s => ({ username: s.username, channel: s.channel_name, hasToken: !!s.access_token }))
+        });
+      }
+      
+      console.log(`Using OAuth token from streamer: ${streamerWithToken.username}`);
+      const success = await kickAPI.sendChatMessage(channel as string, message as string, streamerWithToken.access_token, 'bot');
+      
+      if (success) {
+        return res.json({ 
+          success: true, 
+          message: 'Message sent successfully',
+          channel: channel,
+          content: message
+        });
+      } else {
+        return res.status(500).json({ error: 'Failed to send message' });
+      }
+    }
+    
+    const success = await kickAPI.sendChatMessage(channel as string, message as string, streamer.access_token, 'bot');
+    
+    if (success) {
+      return res.json({ 
+        success: true, 
+        message: 'Message sent successfully',
+        channel: channel,
+        content: message
+      });
+    } else {
+      return res.status(500).json({ error: 'Failed to send message' });
+    }
+  } catch (error) {
+    console.error('Test send error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Test endpoint to send a message using OAuth token (POST version)
+app.post('/api/bot/test-send', async (req, res) => {
+  try {
+    const { channelSlug, message } = req.body;
+    
+    if (!channelSlug || !message) {
+      return res.status(400).json({ 
+        error: 'Missing channelSlug or message',
+        usage: 'POST /api/bot/test-send with {"channelSlug": "realglitchdyeet", "message": "test"}'
+      });
+    }
+    
+    // Get OAuth token from database
+    const streamers = await db.getAllActiveStreamers();
+    const streamer = streamers.find(s => 
+      s.channel_name.toLowerCase() === channelSlug.toLowerCase() ||
+      s.username.toLowerCase() === channelSlug.toLowerCase()
+    );
+    
+    if (!streamer || !streamer.access_token || streamer.access_token.startsWith('bot_token_')) {
+      // Try to get any OAuth token
+      const streamerWithToken = streamers.find(s => 
+        s.access_token && !s.access_token.startsWith('bot_token_') && s.access_token.length > 20
+      );
+      
+      if (!streamerWithToken) {
+        return res.status(400).json({ 
+          error: 'No OAuth token found',
+          message: 'Complete OAuth registration first at /auth/kick',
+          streamers: streamers.map(s => ({ username: s.username, channel: s.channel_name, hasToken: !!s.access_token }))
+        });
+      }
+      
+      console.log(`Using OAuth token from streamer: ${streamerWithToken.username}`);
+      const success = await kickAPI.sendChatMessage(channelSlug, message, streamerWithToken.access_token, 'bot');
+      
+      if (success) {
+        return res.json({ 
+          success: true, 
+          message: 'Message sent successfully!',
+          channel: channelSlug,
+          tokenSource: streamerWithToken.username
+        });
+      } else {
+        return res.status(500).json({ 
+          error: 'Failed to send message',
+          channel: channelSlug
+        });
+      }
+    }
+    
+    const success = await kickAPI.sendChatMessage(channelSlug, message, streamer.access_token, 'bot');
+    
+    if (success) {
+      res.json({ success: true, message: 'Message sent successfully!', channel: channelSlug });
+    } else {
+      res.status(500).json({ error: 'Failed to send message', channel: channelSlug });
+    }
+  } catch (error: any) {
+    console.error('Test send error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/bot/status/:channelSlug', async (req, res) => {
+  try {
+    const { channelSlug } = req.params;
+    const isConnected = bot.isChannelConnected(channelSlug);
+    
+    res.json({
+      channelSlug,
+      connected: isConnected,
+      botUsername: process.env.BOT_USERNAME || 'CrossTalkBot',
+      instructions: isConnected 
+        ? 'Bot is connected. Make sure to run "/mod CrossTalkBot" in your chat, then try !setupchat'
+        : `Bot is not connected. Use POST /api/bot/connect with {"channelSlug": "${channelSlug}"} to connect`
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -932,6 +1300,191 @@ app.get('/bot-token', (req, res) => {
       </body>
     </html>
   `);
+});
+
+// OAuth diagnostic endpoint
+app.get('/api/oauth/diagnostic', (req, res) => {
+  const clientId = process.env.KICK_CLIENT_ID;
+  const redirectUri = process.env.KICK_REDIRECT_URI || `http://localhost:${PORT}/auth/kick/callback`;
+  
+  const diagnostic = {
+    clientId: clientId ? 'Set' : 'Missing',
+    clientSecret: process.env.KICK_CLIENT_SECRET ? 'Set' : 'Missing',
+    redirectUri: redirectUri,
+    expectedInKickApp: redirectUri,
+    oauthUrl: `https://id.kick.com/oauth/authorize`,
+    requiredParams: [
+      'client_id',
+      'redirect_uri',
+      'response_type=code',
+      'scope',
+      'state',
+      'code_challenge',
+      'code_challenge_method=S256',
+    ],
+    instructions: [
+      `1. Go to https://dev.kick.com`,
+      `2. Find your app (Client ID: ${clientId || 'NOT SET'})`,
+      `3. Check "Redirect URI" field`,
+      `4. Must be EXACTLY: ${redirectUri}`,
+      `5. No trailing slash, exact case, exact protocol`,
+    ],
+    testUrl: `/auth/kick`,
+  };
+  
+  res.json(diagnostic);
+});
+
+// Setup status endpoint - check what's configured
+app.get('/api/setup/status', async (req, res) => {
+  try {
+    const status = {
+      bot: {
+        username: process.env.BOT_USERNAME || null,
+        token: process.env.BOT_ACCESS_TOKEN ? 'Set' : 'Missing',
+        tokenValid: false,
+      },
+      kick: {
+        clientId: process.env.KICK_CLIENT_ID || null,
+        clientSecret: process.env.KICK_CLIENT_SECRET ? 'Set' : 'Missing',
+        redirectUri: process.env.KICK_REDIRECT_URI || null,
+      },
+      database: {
+        initialized: false,
+        streamers: 0,
+      },
+      botStatus: {
+        started: bot.isBotStarted(),
+        connectedChannels: [],
+      },
+    };
+
+    // Check if bot token is valid
+    if (process.env.BOT_ACCESS_TOKEN) {
+      try {
+        const introspectResponse = await axios.post('https://id.kick.com/oauth/token/introspect', null, {
+          headers: { Authorization: `Bearer ${process.env.BOT_ACCESS_TOKEN}` },
+        });
+        status.bot.tokenValid = introspectResponse.data?.data?.active === true;
+      } catch (e) {
+        status.bot.tokenValid = false;
+      }
+    }
+
+    // Check database
+    try {
+      const streamers = await db.getAllActiveStreamers();
+      status.database.initialized = true;
+      status.database.streamers = streamers.length;
+    } catch (e) {
+      status.database.initialized = false;
+    }
+
+    // Get connected channels (if we can track them)
+    // This would require exposing listener info from bot
+
+    res.json(status);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Quick setup guide endpoint
+app.get('/api/setup/guide', (req, res) => {
+  const guide = {
+    steps: [
+      {
+        step: 1,
+        title: 'Configure Bot Token',
+        description: 'Get a user OAuth token with chat:write scope',
+        completed: !!process.env.BOT_ACCESS_TOKEN,
+        action: '/auth/kick',
+        actionText: 'Get Bot Token',
+      },
+      {
+        step: 2,
+        title: 'Add Bot as Moderator',
+        description: `Type "/mod ${process.env.BOT_USERNAME || 'CrossTalkBot'}" in your chat`,
+        completed: false, // Can't check this via API
+        action: null,
+        actionText: 'Go to Your Channel',
+      },
+      {
+        step: 3,
+        title: 'Connect Bot to Channel',
+        description: 'Connect the bot to your channel so it can listen',
+        completed: false,
+        action: '/api/bot/connect',
+        actionText: 'Connect Bot',
+      },
+      {
+        step: 4,
+        title: 'Register Your Channel',
+        description: 'Type "!setupchat" in your chat to register',
+        completed: false,
+        action: null,
+        actionText: 'Go to Your Chat',
+      },
+    ],
+    botUsername: process.env.BOT_USERNAME || 'CrossTalkBot',
+    botTokenSet: !!process.env.BOT_ACCESS_TOKEN,
+  };
+
+  res.json(guide);
+});
+
+// Test OAuth flow page
+app.get('/test-oauth', (req, res) => {
+  res.sendFile(path.join(__dirname, '../test-oauth-flow.html'));
+});
+
+// Log viewer page
+app.get('/logs', (req, res) => {
+  res.sendFile(path.join(__dirname, '../view-logs.html'));
+});
+
+// In-memory log storage for debugging (last 100 lines)
+if (!(global as any).serverLogs) {
+  (global as any).serverLogs = [];
+}
+
+// Override console.log to capture logs
+const originalLog = console.log;
+const originalError = console.error;
+console.log = (...args: any[]) => {
+  const message = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+  (global as any).serverLogs.push({ type: 'log', message, timestamp: new Date().toISOString() });
+  if ((global as any).serverLogs.length > 100) {
+    (global as any).serverLogs.shift();
+  }
+  originalLog(...args);
+};
+console.error = (...args: any[]) => {
+  const message = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+  (global as any).serverLogs.push({ type: 'error', message, timestamp: new Date().toISOString() });
+  if ((global as any).serverLogs.length > 100) {
+    (global as any).serverLogs.shift();
+  }
+  originalError(...args);
+};
+
+// API endpoint to view recent logs
+app.get('/api/logs', (req, res) => {
+  const logs = (global as any).serverLogs || [];
+  const filter = req.query.filter as string;
+  let filteredLogs = logs;
+  
+  if (filter) {
+    filteredLogs = logs.filter((log: any) => 
+      log.message.toLowerCase().includes(filter.toLowerCase())
+    );
+  }
+  
+  res.json({
+    total: logs.length,
+    filtered: filteredLogs.length,
+    logs: filteredLogs.slice(-50), // Last 50 logs
+  });
 });
 
 // Serve static files (CSS, JS) - AFTER all API routes
