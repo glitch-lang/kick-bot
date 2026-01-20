@@ -298,6 +298,24 @@ export class KickAPI {
     }
   }
 
+  async disconnectFromChat(channelSlug: string): Promise<void> {
+    try {
+      // Close WebSocket connection if exists
+      const ws = this.pusherConnections.get(channelSlug);
+      if (ws) {
+        ws.close();
+        this.pusherConnections.delete(channelSlug);
+      }
+      
+      // Remove chat listener
+      this.chatListeners.delete(channelSlug);
+      
+      console.log(`✅ Disconnected from chat: ${channelSlug}`);
+    } catch (error: any) {
+      console.error(`Error disconnecting from ${channelSlug}:`, error.message);
+    }
+  }
+
   private async connectToPusher(channelSlug: string, chatroomId: number, onMessage: (message: KickChatMessage) => void): Promise<void> {
     // Kick's Pusher configuration - UPDATED KEY (2026)
     const PUSHER_KEY = '32cbd69e4b950bf97679';

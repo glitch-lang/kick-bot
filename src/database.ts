@@ -202,6 +202,20 @@ export async function getAllActiveStreamers(): Promise<Streamer[]> {
   return (await dbAll('SELECT * FROM streamers WHERE is_active = 1') as Streamer[]);
 }
 
+export async function deactivateStreamer(id: number): Promise<void> {
+  await dbRun(
+    'UPDATE streamers SET is_active = 0 WHERE id = ?',
+    [id]
+  );
+}
+
+export async function reactivateStreamer(id: number): Promise<void> {
+  await dbRun(
+    'UPDATE streamers SET is_active = 1 WHERE id = ?',
+    [id]
+  );
+}
+
 export async function deleteStreamer(streamerId: number): Promise<void> {
   await dbRun('DELETE FROM streamers WHERE id = ?', [streamerId]);
 }

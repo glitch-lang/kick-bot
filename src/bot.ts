@@ -115,6 +115,12 @@ export class KickBot {
       return;
     }
     
+    // Handle !optout command - unregister from bot
+    if (content.startsWith('!optout') || content.startsWith('!unregister')) {
+      await this.handleOptOutCommand(message, channelSlug);
+      return;
+    }
+    
     // Handle !ping command - works even without registration
     if (content.startsWith('!ping')) {
       const token = streamer?.access_token || process.env.BOT_ACCESS_TOKEN;
@@ -130,7 +136,7 @@ export class KickBot {
       if (token) {
         await kickAPI.sendChatMessage(
           channelSlug,
-          `@${username} Commands: !ping, !help, !online, !streamers, !setupchat, !reply <msg>, !respond <id> <msg>`,
+          `@${username} Commands: !ping, !help, !online, !streamers, !setupchat, !optout, !reply <msg>, !respond <id> <msg>`,
           token
         );
       }
@@ -413,6 +419,54 @@ export class KickBot {
     if (botToken) {
       await this.sendMessage(channelSlug, botToken, `@${userId} ✅ Cooldown updated to ${cooldownText}!`);
     }
+  }
+
+  private async handleOptOutCommand(message: KickChatMessage, channelSlug: string) {
+    const userId = message.user.username;
+    
+    // Check if user is broadcaster
+    const isBroadcaster = userId.toLowerCase() === channelSlug.toLowerCase();
+    
+    if (!isBroadcaster) {
+      const botToken = process.env.BOT_ACCESS_TOKEN || '';
+      if (botToken) {
+        await this.sendMessage(channelSlug, botToken, `@${userId} Only the channel broadcaster can use !optout.`);
+      }
+      return;
+    }
+    
+    // Get streamer
+    const streamer = await db.getStreamerByChannelName(channelSlug);
+    if (!streamer) {
+      const botToken = process.env.BOT_ACCESS_TOKEN || '';
+      if (botToken) {
+        await this.sendMessage(channelSlug, botToken, `@${userId} Channel not registered. Nothing to opt out of!`);
+      }
+      return;
+    }
+    
+    // Deactivate streamer
+    await db.deactivateStreamer(streamer.id);
+    
+    // Disconnect from chat
+    const listener = this.listeners.get(channelSlug);
+    if (listener) {
+      this.listeners.delete(channelSlug);
+      // Try to close Pusher connection if exists
+      await kickAPI.disconnectFromChat(channelSlug);
+    }
+    
+    // Send confirmation
+    const botToken = await this.getBotToken(channelSlug);
+    if (botToken) {
+      await this.sendMessage(
+        channelSlug, 
+        botToken, 
+        `@${userId} ✅ You've been removed from the bot network. Your channel will no longer appear in !streamers and users cannot send you messages. To rejoin, use !setupchat again.`
+      );
+    }
+    
+    console.log(`✅ ${channelSlug} opted out and was deactivated`);
   }
 
   private async handleStreamerCommand(
@@ -929,7 +983,7 @@ export class KickBot {
         case 'help':
           await kickAPI.sendChatMessage(
             channelSlug,
-            `@${message.user.username} Commands: !ping, !online, !streamers, !setupchat, !reply <msg>, !respond <id> <msg>, !channelname <msg>`,
+            `@${message.user.username} Commands: !ping, !online, !streamers, !setupchat, !optout, !cooldownchat <sec>, !reply <msg>, !respond <id> <msg>, !channelname <msg>`,
             token
           );
           break;
