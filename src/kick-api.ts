@@ -299,15 +299,12 @@ export class KickAPI {
   }
 
   private async connectToPusher(channelSlug: string, chatroomId: number, onMessage: (message: KickChatMessage) => void): Promise<void> {
-    // Kick's Pusher configuration - try Kick's own WebSocket first
-    const PUSHER_KEY = 'eb1d5f283081a78b932c';
+    // Kick's Pusher configuration - UPDATED KEY (2026)
+    const PUSHER_KEY = '32cbd69e4b950bf97679';
     
-    // Try Kick's own WebSocket endpoints first (they might host their own Pusher instance)
+    // Current working Pusher endpoint (2026) - same as Botrix/Kicklet use
     const endpoints = [
-      { url: `wss://ws-us2.pusher.com/app/${PUSHER_KEY}?protocol=7&client=js&version=7.4.0&flash=false&cluster=us2`, name: 'us2 with cluster param' },
-      { url: `wss://ws-us2.pusher.com/app/${PUSHER_KEY}?protocol=7&client=js&version=7.4.0&flash=false`, name: 'us2 (Ohio)' },
-      { url: `wss://ws-mt1.pusher.com/app/${PUSHER_KEY}?protocol=7&client=js&version=7.4.0&flash=false`, name: 'mt1 (N. Virginia)' },
-      { url: `wss://ws-eu.pusher.com/app/${PUSHER_KEY}?protocol=7&client=js&version=7.4.0&flash=false`, name: 'eu (Ireland)' },
+      { url: `wss://ws-us2.pusher.com/app/${PUSHER_KEY}?protocol=7&client=js&version=7.6.0&flash=false`, name: 'us2 (Current Working)' },
     ];
     
     for (const endpoint of endpoints) {
@@ -367,12 +364,12 @@ export class KickAPI {
             console.log(`✅ Pusher connection established for ${channelSlug}`);
             connectionEstablished = true;
             
-            // Subscribe to chatroom - Kick uses chatrooms.{id} format
-            // NOTE: If this fails, Kick might require authentication for the subscription
+            // Subscribe to chatroom - Kick uses chatrooms.{id}.v2 format (v2 is required!)
             const subscribeMessage = {
               event: 'pusher:subscribe',
               data: {
-                channel: `chatrooms.${chatroomId}`
+                auth: '',
+                channel: `chatrooms.${chatroomId}.v2`
               }
             };
             ws.send(JSON.stringify(subscribeMessage));
