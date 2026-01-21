@@ -33,12 +33,15 @@ const discordAuthManager = new AuthManager(DISCORD_TOKEN_KEY);
 const streamManager = new StreamManager(KICK_API_URL);
 const browserStreamManager = new BrowserStreamManager();
 
+// Use Railway's dynamic port or default to 3001 for local
+const PORT = parseInt(process.env.PORT || '3001', 10);
+
 // Initialize Watch Party Server with optional OAuth
 let watchPartyServer: WatchPartyServer;
 if (process.env.KICK_OAUTH_CLIENT_ID && process.env.KICK_OAUTH_CLIENT_SECRET && 
     process.env.SESSION_SECRET && process.env.ENCRYPTION_KEY) {
   // OAuth enabled
-  watchPartyServer = new WatchPartyServer(3001, KICK_API_URL, db, {
+  watchPartyServer = new WatchPartyServer(PORT, KICK_API_URL, db, {
     clientId: process.env.KICK_OAUTH_CLIENT_ID,
     clientSecret: process.env.KICK_OAUTH_CLIENT_SECRET,
     redirectUri: process.env.KICK_OAUTH_REDIRECT_URI || `${PUBLIC_URL}/auth/callback`,
@@ -47,7 +50,7 @@ if (process.env.KICK_OAUTH_CLIENT_ID && process.env.KICK_OAUTH_CLIENT_SECRET &&
   }, discordAuthManager);
 } else {
   // OAuth disabled
-  watchPartyServer = new WatchPartyServer(3001, KICK_API_URL, undefined, undefined, discordAuthManager);
+  watchPartyServer = new WatchPartyServer(PORT, KICK_API_URL, undefined, undefined, discordAuthManager);
   console.log('ℹ️  OAuth login disabled (set KICK_OAUTH_* env vars to enable)');
 }
 
@@ -61,7 +64,7 @@ async function startTunnel() {
   try {
     console.log('🌐 Starting LocalTunnel for public access...');
     const tunnel = await localtunnel({ 
-      port: 3001,
+      port: PORT,
       subdomain: process.env.TUNNEL_SUBDOMAIN || undefined
     });
 
