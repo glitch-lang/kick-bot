@@ -74,7 +74,7 @@ export class WatchPartyServer {
 
   private setupRoutes() {
     this.app.use(express.json());
-    this.app.use(express.static(path.join(__dirname, '../public')));
+    this.app.use(express.static(path.join(__dirname, 'public')));
 
     // Mount OAuth router if available
     if (this.oauthRouter) {
@@ -107,7 +107,7 @@ export class WatchPartyServer {
 
     // Watch party page
     this.app.get('/party/:partyId', (req, res) => {
-      res.sendFile(path.join(__dirname, '../public/watch-party.html'));
+      res.sendFile(path.join(__dirname, 'public/watch-party.html'));
     });
 
     // Get party info

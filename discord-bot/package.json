@@ -4,7 +4,8 @@
   "description": "Discord bot for CrossTalk - Connect Discord with Kick streamers",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run copy-public",
+    "copy-public": "node -e \"require('fs').cpSync('public', 'dist/public', {recursive: true})\"",
     "start": "node dist/index.js",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts"
   },
