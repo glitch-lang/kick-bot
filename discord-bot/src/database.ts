@@ -49,19 +49,20 @@ export class Database {
     
     console.log(`📂 Using database path: ${dbPath}`);
     
-    try {
-      this.db = new sqlite3.Database(dbPath, (err) => {
-        if (err) {
-          console.error(`❌ CRITICAL: Failed to open database at ${dbPath}:`, err);
-          throw err;
-        }
-        console.log(`✅ Database opened successfully at ${dbPath}`);
+    // Open database and wait for it to be ready before initializing
+    this.db = new sqlite3.Database(dbPath, (err) => {
+      if (err) {
+        console.error(`❌ CRITICAL: Failed to open database at ${dbPath}:`, err);
+        process.exit(1); // Exit if database can't be opened
+      }
+      console.log(`✅ Database opened successfully at ${dbPath}`);
+      
+      // Initialize tables after database is ready
+      this.init().catch((error) => {
+        console.error(`❌ CRITICAL: Database initialization failed:`, error);
+        process.exit(1);
       });
-      this.init();
-    } catch (error) {
-      console.error(`❌ CRITICAL: Database initialization failed:`, error);
-      throw error;
-    }
+    });
   }
 
   private runQuery(sql: string, params: any[] = []): Promise<void> {
