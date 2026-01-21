@@ -24,19 +24,44 @@ export class Database {
     
     const dbPath = process.env.DB_PATH || path.join(dbDir, 'discord-bot.db');
     
-    // Create directory if it doesn't exist
+    // Create directory if it doesn't exist (must succeed before DB creation)
     if (!fs.existsSync(dbDir)) {
       try {
         fs.mkdirSync(dbDir, { recursive: true });
         console.log(`✅ Created database directory: ${dbDir}`);
       } catch (error) {
-        console.error(`❌ Failed to create database directory: ${error}`);
+        console.error(`❌ CRITICAL: Failed to create database directory: ${error}`);
+        console.error(`❌ Cannot proceed without writable database directory!`);
+        throw new Error(`Failed to create database directory: ${dbDir}`);
       }
+    } else {
+      console.log(`✅ Database directory exists: ${dbDir}`);
+    }
+    
+    // Verify directory is writable
+    try {
+      fs.accessSync(dbDir, fs.constants.W_OK);
+      console.log(`✅ Database directory is writable`);
+    } catch (error) {
+      console.error(`❌ CRITICAL: Database directory is not writable: ${dbDir}`);
+      throw new Error(`Database directory is not writable: ${dbDir}`);
     }
     
     console.log(`📂 Using database path: ${dbPath}`);
-    this.db = new sqlite3.Database(dbPath);
-    this.init();
+    
+    try {
+      this.db = new sqlite3.Database(dbPath, (err) => {
+        if (err) {
+          console.error(`❌ CRITICAL: Failed to open database at ${dbPath}:`, err);
+          throw err;
+        }
+        console.log(`✅ Database opened successfully at ${dbPath}`);
+      });
+      this.init();
+    } catch (error) {
+      console.error(`❌ CRITICAL: Database initialization failed:`, error);
+      throw error;
+    }
   }
 
   private runQuery(sql: string, params: any[] = []): Promise<void> {
