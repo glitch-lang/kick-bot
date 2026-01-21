@@ -10,7 +10,7 @@ import {
   VoiceConnectionStatus
 } from '@discordjs/voice';
 import { VoiceChannel, TextChannel } from 'discord.js';
-import puppeteer, { Browser, Page } from 'puppeteer';
+import puppeteer, { Browser, Page } from 'puppeteer-core';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegStatic from 'ffmpeg-static';
 import { Readable } from 'stream';
@@ -52,7 +52,17 @@ export class BrowserStreamManager {
 
       // 1. Launch headless browser
       console.log('🌐 Launching browser...');
+      
+      // Try to find Chrome/Chromium executable (required for puppeteer-core)
+      const executablePath = process.env.CHROME_PATH || process.env.PUPPETEER_EXECUTABLE_PATH;
+      
+      if (!executablePath) {
+        console.error('❌ No Chrome executable found. Set CHROME_PATH or PUPPETEER_EXECUTABLE_PATH');
+        return `❌ Browser streaming is not available on this deployment. Use watch parties instead with \`/kick stream ${streamerName}\`!`;
+      }
+      
       const browser = await puppeteer.launch({
+        executablePath,
         headless: 'new',
         args: [
           '--no-sandbox',
