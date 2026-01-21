@@ -643,11 +643,11 @@
                 const kickChatError = document.getElementById('kickChatError');
                 const kickChatLink = document.getElementById('kickChatLink');
                 
-                // Try multiple Kick chat URLs
+                // Try multiple Kick chat URLs (official popout first!)
                 const chatUrls = [
-                    `https://kick.com/${data.streamerName}/chatroom`,
-                    `https://www.kick.com/${data.streamerName}/chatroom`,
-                    `https://kick.com/${data.streamerName}`
+                    `https://kick.com/popout/${data.streamerName}/chat`,  // Official popout chat
+                    `https://kick.com/${data.streamerName}/chatroom`,      // Standard chatroom
+                    `https://kick.com/${data.streamerName}`                // Fallback to main page
                 ];
                 
                 let currentUrlIndex = 0;
