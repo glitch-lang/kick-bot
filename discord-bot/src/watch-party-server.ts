@@ -54,6 +54,13 @@ export class WatchPartyServer {
     this.db = db;
     this.discordAuthManager = discordAuthManager;
     this.app = express();
+    
+    // Trust Railway's proxy for accurate IP detection and rate limiting
+    if (process.env.RAILWAY_ENVIRONMENT) {
+      this.app.set('trust proxy', 1);
+      console.log('✅ Express configured to trust Railway proxy');
+    }
+    
     this.server = http.createServer(this.app);
     this.io = new SocketIOServer(this.server, {
       cors: {
