@@ -152,6 +152,15 @@ async function checkLiveStreamers() {
           // Get watch party URL
           const partyUrl = `${PUBLIC_URL}/party/${partyId}`;
           
+          // Create button for instant watch with personal link
+          const watchNowButton = new ButtonBuilder()
+            .setCustomId(`watch_now_${partyId}`)
+            .setLabel('🎬 Watch Now')
+            .setStyle(ButtonStyle.Success);
+          
+          const watchNowRow = new ActionRowBuilder<ButtonBuilder>()
+            .addComponents(watchNowButton);
+
           // Post to Discord channel
           const channel = await client.channels.fetch(ap.discord_channel_id) as TextChannel;
           if (channel) {
@@ -160,7 +169,8 @@ async function checkLiveStreamers() {
               .setTitle(`🔴 ${ap.streamer_name} is now LIVE!`)
               .setDescription(
                 `**Watch Party Auto-Created!**\n\n` +
-                `🔗 **Join here:** ${partyUrl}\n\n` +
+                `🎬 **Click "Watch Now"** below for your personal link!\n` +
+                `🔗 Or use public link: ${partyUrl}\n\n` +
                 `**Stream Info:**\n` +
                 `📺 **Title:** ${streamData.session_title || 'Live Stream'}\n` +
                 `🎮 **Category:** ${streamData.category || 'Gaming'}\n` +
@@ -168,7 +178,7 @@ async function checkLiveStreamers() {
                 `${ap.auto_relay ? '📤 Kick chat relay is **ENABLED** ✅\n' : ''}` +
                 `**Features:**\n` +
                 `🎥 Synchronized video + audio\n` +
-                `💬 Shared chat\n` +
+                `💬 Shared chat with points tracking\n` +
                 `👥 See who's watching`
               )
               .setThumbnail(streamData.thumbnail || `https://kick.com/${ap.streamer_name}/thumb.jpg`)
@@ -180,7 +190,7 @@ async function checkLiveStreamers() {
               .setFooter({ text: 'Auto-created watch party • Use !kick endparty to end' })
               .setTimestamp();
             
-            await channel.send({ content: '@here', embeds: [embed] });
+            await channel.send({ content: '@here', embeds: [embed], components: [watchNowRow] });
             console.log(`✅ Posted watch party for ${ap.streamer_name} in channel ${ap.discord_channel_id}`);
           }
         }
@@ -403,8 +413,9 @@ client.on('messageCreate', async (message) => {
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isButton()) return;
 
-  if (interaction.customId.startsWith('join_party_')) {
-    const partyId = interaction.customId.replace('join_party_', '');
+  // Handle both join_party_ and watch_now_ buttons
+  if (interaction.customId.startsWith('join_party_') || interaction.customId.startsWith('watch_now_')) {
+    const partyId = interaction.customId.replace('join_party_', '').replace('watch_now_', '');
     const username = interaction.user.username;
     const userId = interaction.user.id;
 
@@ -412,6 +423,32 @@ client.on('interactionCreate', async (interaction) => {
     const token = discordAuthManager.generateDiscordToken(username, userId);
     const personalUrl = `${PUBLIC_URL}/party/${partyId}?discord=${token}`;
 
+    // If it's a "Watch Now" button, send the link directly in an ephemeral message
+    if (interaction.customId.startsWith('watch_now_')) {
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0x53fc18)
+            .setTitle('🎬 Your Personal Watch Party Link')
+            .setDescription(
+              `**Click the link below to start watching:**\n\n` +
+              `🔗 **[Open Watch Party](${personalUrl})**\n\n` +
+              `**Personalized for you:**\n` +
+              `✅ Username auto-filled: **${username}**\n` +
+              `✅ Points tracking enabled\n` +
+              `✅ Ready to chat instantly\n\n` +
+              `*This link expires in 24 hours*`
+            )
+            .setTimestamp()
+        ],
+        ephemeral: true
+      });
+
+      console.log(`🎬 Generated Watch Now link for ${username} (${userId}) - party ${partyId}`);
+      return;
+    }
+
+    // Original behavior for join_party_ button (send DM)
     try {
       // Send DM with personal link
       await interaction.user.send({
@@ -948,11 +985,11 @@ async function handleWatchPartyCommand(message: any) {
     // Get watch party URL
     const partyUrl = `${PUBLIC_URL}/party/${partyId}`;
     
-    // Create button for personalized link
+    // Create button for instant watch with personal link
     const button = new ButtonBuilder()
-      .setCustomId(`join_party_${partyId}`)
-      .setLabel('🎫 Get Your Personal Link')
-      .setStyle(ButtonStyle.Primary);
+      .setCustomId(`watch_now_${partyId}`)
+      .setLabel('🎬 Watch Now')
+      .setStyle(ButtonStyle.Success);
     
     const row = new ActionRowBuilder<ButtonBuilder>()
       .addComponents(button);
@@ -963,13 +1000,13 @@ async function handleWatchPartyCommand(message: any) {
       .setTitle(`🎬 Watch Party Created: ${streamerName}`)
       .setDescription(
         `**Your synchronized watch party is ready!**\n\n` +
-        `🔗 **Public Link:** ${partyUrl}\n` +
-        `🎫 **Or click button below** for a personal link with your Discord username auto-filled!\n\n` +
+        `🎬 **Click "Watch Now"** below for your personal link with points tracking!\n` +
+        `🔗 Or use public link: ${partyUrl}\n\n` +
         `**Features:**\n` +
         `🎥 Live Kick stream (video + audio)\n` +
         `💬 Shared chat with Discord\n` +
         `👥 See who's watching\n` +
-        `🔄 Perfect synchronization\n` +
+        `🎮 Earn points for watch time\n` +
         `${relayEnabled ? '📤 **Messages relay to Kick chat** ✅\n' : ''}`
       )
       .addFields({
