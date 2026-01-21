@@ -235,6 +235,12 @@ export class WatchPartyServer {
 
         if (!party) return;
 
+        // Check for commands
+        if (message.startsWith('!')) {
+          await this.handleChatCommand(partyId, socket.id, username, message, party);
+          return;
+        }
+
         const chatMessage = {
           username,
           message,
@@ -407,6 +413,77 @@ export class WatchPartyServer {
 
     party.chatMessages.push(chatMessage);
     this.io.to(partyId).emit('new-message', chatMessage);
+  }
+
+  private async handleChatCommand(partyId: string, socketId: string, username: string, message: string, party: WatchParty) {
+    const command = message.toLowerCase().split(' ')[0];
+    
+    // System message helper
+    const sendSystemMessage = (text: string) => {
+      const systemMessage = {
+        username: 'System',
+        message: text,
+        timestamp: new Date(),
+        platform: 'discord' as const
+      };
+      this.io.to(socketId).emit('new-message', systemMessage);
+    };
+
+    // Get viewer's Discord ID
+    const viewer = party.viewers.get(socketId);
+    const discordId = viewer?.discordId;
+
+    switch (command) {
+      case '!points':
+      case '!stats':
+        if (!discordId) {
+          sendSystemMessage('⚠️ You need to join via Discord link to track points!');
+          return;
+        }
+        
+        if (this.db) {
+          try {
+            const stats = await this.db.getUserWatchTime(discordId);
+            const currentMinutes = Math.floor((new Date().getTime() - viewer.joinedAt.getTime()) / 60000);
+            sendSystemMessage(
+              `📊 ${username}'s Stats:\n` +
+              `⏱️ Current session: ${currentMinutes} minutes\n` +
+              `🎮 Total watch time: ${stats.totalMinutes} minutes\n` +
+              `📺 Sessions: ${stats.sessions}\n` +
+              `💎 Future points: ${stats.totalMinutes} (1 point/minute)`
+            );
+          } catch (error) {
+            console.error('Failed to get stats:', error);
+            sendSystemMessage('❌ Failed to load stats');
+          }
+        } else {
+          sendSystemMessage('❌ Stats tracking not available');
+        }
+        break;
+
+      case '!help':
+        sendSystemMessage(
+          '📋 Available Commands:\n' +
+          '• !points / !stats - View your watch time and points\n' +
+          '• !help - Show this message\n' +
+          '• !party - Show party info'
+        );
+        break;
+
+      case '!party':
+        const uptimeMinutes = Math.floor((new Date().getTime() - party.createdAt.getTime()) / 60000);
+        sendSystemMessage(
+          `🎉 Watch Party Info:\n` +
+          `📺 Streamer: ${party.streamerName}\n` +
+          `👥 Viewers: ${party.viewers.size}\n` +
+          `⏱️ Uptime: ${uptimeMinutes} minutes\n` +
+          `🏰 Server: ${party.guildName}`
+        );
+        break;
+
+      default:
+        sendSystemMessage(`❌ Unknown command: ${command}. Type !help for available commands.`);
+    }
   }
 
   private generatePartyId(): string {

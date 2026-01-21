@@ -188,7 +188,42 @@ async function checkLiveStreamers() {
         // If streamer went offline
         if (!isLive && wasLive) {
           liveStreamers.delete(ap.streamer_name);
-          console.log(`🔴 ${ap.streamer_name} went offline`);
+          console.log(`🔴 ${ap.streamer_name} went offline - ending watch parties...`);
+          
+          // End all watch parties for this streamer to prevent point farming
+          const partyId = activeWatchParties.get(ap.discord_channel_id);
+          if (partyId) {
+            // End viewing sessions for all viewers
+            const party = watchPartyServer.getWatchParty(partyId);
+            if (party) {
+              console.log(`📴 Stream ended for ${ap.streamer_name} - finalizing ${party.viewers.size} viewer sessions`);
+            }
+            
+            // Delete the watch party
+            watchPartyServer.deleteWatchParty(partyId);
+            activeWatchParties.delete(ap.discord_channel_id);
+            
+            // Notify Discord channel
+            try {
+              const channel = await client.channels.fetch(ap.discord_channel_id) as TextChannel;
+              if (channel) {
+                const embed = new EmbedBuilder()
+                  .setColor(0xff0000)
+                  .setTitle('📴 Stream Ended')
+                  .setDescription(
+                    `**${ap.streamer_name}** has gone offline.\n\n` +
+                    `The watch party has been closed.\n` +
+                    `All viewer points have been saved! 🎮`
+                  )
+                  .setTimestamp();
+                
+                await channel.send({ embeds: [embed] });
+                console.log(`✅ Notified channel about stream end: ${ap.streamer_name}`);
+              }
+            } catch (error) {
+              console.error(`Failed to notify channel about stream end:`, error);
+            }
+          }
         }
         
       } catch (error: any) {
