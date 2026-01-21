@@ -589,8 +589,10 @@
                 partyInfo = data;
                 document.title = `Watch Party - ${data.streamerName}`;
                 
-                // Load Kick player
-                kickPlayer.src = `https://player.kick.com/${data.streamerName}`;
+                // Load Kick player with autoplay (muted to bypass browser restrictions)
+                const playerUrl = `https://player.kick.com/${data.streamerName}?autoplay=true&muted=true&parent=${window.location.hostname}`;
+                console.log('Loading Kick player:', playerUrl);
+                kickPlayer.src = playerUrl;
                 loading.style.display = 'none';
 
                 // Load Kick chat iframe
