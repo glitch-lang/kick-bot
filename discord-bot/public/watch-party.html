@@ -393,7 +393,10 @@
 
             <div id="kickchatTab" class="tab-content">
                 <div class="kick-chat-container">
-                    <iframe id="kickChatIframe" class="kick-chat-iframe" src="" allowfullscreen></iframe>
+                    <div id="kickChatLoading" style="display: flex; align-items: center; justify-content: center; height: 100%; color: #adadb8;">
+                        <div>Loading Kick chat...</div>
+                    </div>
+                    <iframe id="kickChatIframe" class="kick-chat-iframe" src="" allowfullscreen style="display: none;"></iframe>
                 </div>
             </div>
 
@@ -527,11 +530,17 @@
         let currentDiscordId = null; // Store Discord ID for points tracking
         
         if (discordToken) {
+            console.log('Discord token found, verifying...');
             // Verify and auto-fill Discord username
             fetch(`/api/verify-discord?token=${encodeURIComponent(discordToken)}`)
-                .then(r => r.json())
+                .then(r => {
+                    console.log('Discord verify response status:', r.status);
+                    return r.json();
+                })
                 .then(data => {
+                    console.log('Discord verify response:', data);
                     if (data.valid && data.username) {
+                        console.log('✅ Discord verified:', data.username, 'ID:', data.id);
                         usernameInput.value = data.username;
                         currentUsername = data.username;
                         currentDiscordId = data.id; // Store Discord ID for points
@@ -550,9 +559,13 @@
                         
                         // Clean URL
                         window.history.replaceState({}, document.title, window.location.pathname);
+                    } else {
+                        console.error('❌ Discord verification failed:', data);
+                        addSystemMessage('⚠️ Could not verify Discord identity. Please enter your username manually.');
                     }
                 })
                 .catch(err => {
+                    console.error('❌ Discord verification error:', err);
                     console.error('Discord token verification failed:', err);
                 });
         }
@@ -582,7 +595,24 @@
 
                 // Load Kick chat iframe
                 const kickChatIframe = document.getElementById('kickChatIframe');
-                kickChatIframe.src = `https://kick.com/${data.streamerName}/chatroom`;
+                const kickChatLoading = document.getElementById('kickChatLoading');
+                const kickChatUrl = `https://kick.com/${data.streamerName}/chatroom`;
+                
+                console.log('Setting Kick chat URL:', kickChatUrl);
+                kickChatIframe.src = kickChatUrl;
+                
+                // Show iframe and hide loading after it loads
+                kickChatIframe.onload = function() {
+                    console.log('✅ Kick chat iframe loaded');
+                    kickChatLoading.style.display = 'none';
+                    kickChatIframe.style.display = 'block';
+                };
+                
+                // Handle load errors
+                kickChatIframe.onerror = function() {
+                    console.error('❌ Failed to load Kick chat');
+                    kickChatLoading.innerHTML = '<div style="color: #f00;">Failed to load Kick chat</div>';
+                };
 
                 // Display recent messages
                 data.recentMessages.forEach(msg => addMessageToChat(msg));
@@ -698,7 +728,9 @@
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
 
-        function switchTab(tab) {
+        // Make switchTab globally accessible (moved outside DOMContentLoaded scope issue)
+        window.switchTab = function(tab) {
+            console.log('Switching to tab:', tab);
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             
