@@ -409,6 +409,27 @@
     </div>
 
     <script>
+        // Define switchTab FIRST so inline onclick handlers can find it
+        function switchTab(tab) {
+            console.log('Switching to tab:', tab);
+            const tabs = document.querySelectorAll('.tab');
+            const contents = document.querySelectorAll('.tab-content');
+            
+            tabs.forEach(t => t.classList.remove('active'));
+            contents.forEach(c => c.classList.remove('active'));
+            
+            if (tab === 'chat') {
+                tabs[0].classList.add('active');
+                document.getElementById('chatTab').classList.add('active');
+            } else if (tab === 'kickchat') {
+                tabs[1].classList.add('active');
+                document.getElementById('kickchatTab').classList.add('active');
+            } else if (tab === 'viewers') {
+                tabs[2].classList.add('active');
+                document.getElementById('viewersTab').classList.add('active');
+            }
+        }
+        
         const partyId = window.location.pathname.split('/party/')[1];
         const socket = io();
         let currentUsername = '';
@@ -730,23 +751,6 @@
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
 
-        // Make switchTab globally accessible (moved outside DOMContentLoaded scope issue)
-        window.switchTab = function(tab) {
-            console.log('Switching to tab:', tab);
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            
-            if (tab === 'chat') {
-                document.querySelector('.tab:nth-child(1)').classList.add('active');
-                document.getElementById('chatTab').classList.add('active');
-            } else if (tab === 'kickchat') {
-                document.querySelector('.tab:nth-child(2)').classList.add('active');
-                document.getElementById('kickchatTab').classList.add('active');
-            } else if (tab === 'viewers') {
-                document.querySelector('.tab:nth-child(3)').classList.add('active');
-                document.getElementById('viewersTab').classList.add('active');
-            }
-        }
 
         function escapeHtml(text) {
             const div = document.createElement('div');
