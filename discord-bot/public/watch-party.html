@@ -597,7 +597,7 @@
                         chatInput.disabled = false;
                         sendButton.disabled = false;
                         usernameInput.disabled = true;
-                        addSystemMessage(`✅ Welcome ${data.username}! (Verified from Discord) 🎮 Points tracking enabled!`);
+                        // Don't show welcome message - viewer-joined event will handle it
                         
                         // Clean URL
                         window.history.replaceState({}, document.title, window.location.pathname);
@@ -771,12 +771,15 @@
 
         socket.on('viewer-joined', (data) => {
             viewerCountEl.textContent = data.viewerCount;
-            addSystemMessage(`${data.username} joined the watch party`);
+            // Only show join message if it's not you
+            if (data.username !== usernameInput.value) {
+                addSystemMessage(`${data.username} joined`);
+            }
         });
 
         socket.on('viewer-left', (data) => {
             viewerCountEl.textContent = data.viewerCount;
-            addSystemMessage(`${data.username} left the watch party`);
+            addSystemMessage(`${data.username} left`);
         });
 
         socket.on('party-ended', () => {

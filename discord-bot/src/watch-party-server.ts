@@ -446,11 +446,7 @@ export class WatchPartyServer {
             const stats = await this.db.getUserWatchTime(discordId);
             const currentMinutes = Math.floor((new Date().getTime() - viewer.joinedAt.getTime()) / 60000);
             sendSystemMessage(
-              `📊 ${username}'s Stats:\n` +
-              `⏱️ Current session: ${currentMinutes} minutes\n` +
-              `🎮 Total watch time: ${stats.totalMinutes} minutes\n` +
-              `📺 Sessions: ${stats.sessions}\n` +
-              `💎 Future points: ${stats.totalMinutes} (1 point/minute)`
+              `📊 **${username}** | Session: ${currentMinutes}m | Total: ${stats.totalMinutes}m | Points: ${stats.totalMinutes} 💎`
             );
           } catch (error) {
             console.error('Failed to get stats:', error);
@@ -463,26 +459,23 @@ export class WatchPartyServer {
 
       case '!help':
         sendSystemMessage(
-          '📋 Available Commands:\n' +
-          '• !points / !stats - View your watch time and points\n' +
-          '• !help - Show this message\n' +
-          '• !party - Show party info'
+          '📋 **Commands:** !points (stats) | !party (info) | !help'
         );
         break;
 
       case '!party':
         const uptimeMinutes = Math.floor((new Date().getTime() - party.createdAt.getTime()) / 60000);
         sendSystemMessage(
-          `🎉 Watch Party Info:\n` +
-          `📺 Streamer: ${party.streamerName}\n` +
-          `👥 Viewers: ${party.viewers.size}\n` +
-          `⏱️ Uptime: ${uptimeMinutes} minutes\n` +
-          `🏰 Server: ${party.guildName}`
+          `🎉 **${party.streamerName}** | ${party.viewers.size} viewers | ${uptimeMinutes}m uptime`
         );
         break;
 
       default:
-        sendSystemMessage(`❌ Unknown command: ${command}. Type !help for available commands.`);
+        // Unknown command - show hint
+        sendSystemMessage(
+          `❓ Unknown command. Type !help for available commands`
+        );
+        break;
     }
   }
 
