@@ -168,17 +168,30 @@ export class Database {
   private async runMigrations() {
     try {
       // Migration 1: Add two_way_chat column to watch_party_settings if it doesn't exist
+      console.log('🔍 Checking database schema...');
       const tableInfo: any[] = await this.allQuery('PRAGMA table_info(watch_party_settings)');
+      console.log(`📊 watch_party_settings columns: ${tableInfo.map(c => c.name).join(', ')}`);
+      
       const hasTwoWayChat = tableInfo.some((col: any) => col.name === 'two_way_chat');
       
       if (!hasTwoWayChat) {
         console.log('🔄 Running migration: Adding two_way_chat column...');
         await this.runQuery('ALTER TABLE watch_party_settings ADD COLUMN two_way_chat INTEGER DEFAULT 1');
         console.log('✅ Migration complete: two_way_chat column added');
+        
+        // Verify it was added
+        const newTableInfo: any[] = await this.allQuery('PRAGMA table_info(watch_party_settings)');
+        console.log(`✅ Updated columns: ${newTableInfo.map(c => c.name).join(', ')}`);
+      } else {
+        console.log('✅ two_way_chat column already exists');
       }
     } catch (error) {
-      console.error('⚠️  Migration error:', error);
-      // Don't throw - allow bot to continue
+      console.error('❌ Migration error:', error);
+      // Try to provide more details
+      if (error instanceof Error) {
+        console.error('Error details:', error.message);
+        console.error('Stack:', error.stack);
+      }
     }
   }
 
