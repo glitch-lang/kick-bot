@@ -1,5 +1,6 @@
 [phases.setup]
-nixPkgs = ["nodejs_20", "python3", "chromium"]
+nixPkgs = ["nodejs_20", "python3"]
+# Note: Chromium removed to speed up builds. Puppeteer features will be disabled.
 
 [phases.install]
 cmds = ["npm install"]
