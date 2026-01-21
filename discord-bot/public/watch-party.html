@@ -529,53 +529,55 @@
             </div>
 
             <div id="kickchatTab" class="tab-content">
-                <div class="kick-chat-container" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; text-align: center;">
-                    <div style="font-size: 64px; margin-bottom: 20px;">💬</div>
-                    <h2 style="color: #53fc18; margin-bottom: 15px;">Kick Chat Popup</h2>
-                    <p style="color: #adadb8; margin-bottom: 25px; max-width: 550px; line-height: 1.6;">
-                        Open Kick chat in a popup window. You can drag, resize, and position it anywhere you want!
-                        Your position will be saved for next time.
-                    </p>
+                <div class="kick-chat-container">
+                    <!-- Top bar with popup button -->
+                    <div style="background: #1f1f23; padding: 12px; border-bottom: 2px solid #53fc18; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                        <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
+                            <span style="font-weight: bold; color: #53fc18;">🟢 Kick Chat</span>
+                            <span style="color: #adadb8; font-size: 12px;">(Read-Only View)</span>
+                        </div>
+                        <button id="openKickChatPopup" 
+                                style="background: #53fc18; color: #000; padding: 8px 16px; border: none; border-radius: 5px; font-size: 13px; font-weight: bold; cursor: pointer; transition: transform 0.2s; white-space: nowrap;">
+                            🔐 Login to Chat
+                        </button>
+                    </div>
                     
-                    <div style="margin-bottom: 25px;">
-                        <label style="color: #adadb8; font-size: 14px; margin-bottom: 10px; display: block;">📍 Initial Position:</label>
-                        <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
-                            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; padding: 8px 15px; background: #2a2a2a; border-radius: 5px; border: 2px solid #3a3a3a;">
-                                <input type="radio" name="popupPosition" value="right" checked style="cursor: pointer;"/>
-                                <span style="color: #adadb8; font-size: 14px;">➡️ Right</span>
-                            </label>
-                            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; padding: 8px 15px; background: #2a2a2a; border-radius: 5px; border: 2px solid #3a3a3a;">
-                                <input type="radio" name="popupPosition" value="left" style="cursor: pointer;"/>
-                                <span style="color: #adadb8; font-size: 14px;">⬅️ Left</span>
-                            </label>
-                            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; padding: 8px 15px; background: #2a2a2a; border-radius: 5px; border: 2px solid #3a3a3a;">
-                                <input type="radio" name="popupPosition" value="center" style="cursor: pointer;"/>
-                                <span style="color: #adadb8; font-size: 14px;">🎯 Center</span>
-                            </label>
-                            <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; padding: 8px 15px; background: #2a2a2a; border-radius: 5px; border: 2px solid #3a3a3a;">
-                                <input type="radio" name="popupPosition" value="custom" style="cursor: pointer;"/>
-                                <span style="color: #adadb8; font-size: 14px;">💾 Last Position</span>
-                            </label>
+                    <!-- Kick chat iframe (read-only) -->
+                    <div style="flex: 1; position: relative; background: #0e0e10;">
+                        <div id="kickChatLoading" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #adadb8; flex-direction: column; gap: 15px;">
+                            <div class="spinner"></div>
+                            <div>Loading Kick chat...</div>
+                        </div>
+                        <iframe id="kickChatIframe" class="kick-chat-iframe" src="" allowfullscreen style="display: none;"></iframe>
+                    </div>
+                    
+                    <!-- Popup config (hidden by default, shown when clicking dropdown) -->
+                    <div id="popupConfig" style="display: none; background: #18181b; padding: 15px; border-top: 1px solid #2d2d30;">
+                        <div style="margin-bottom: 10px;">
+                            <label style="color: #adadb8; font-size: 12px; margin-bottom: 8px; display: block;">📍 Popup Position:</label>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; padding: 6px 12px; background: #2a2a2a; border-radius: 4px; font-size: 12px;">
+                                    <input type="radio" name="popupPosition" value="right" checked style="cursor: pointer;"/>
+                                    <span style="color: #adadb8;">➡️ Right</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; padding: 6px 12px; background: #2a2a2a; border-radius: 4px; font-size: 12px;">
+                                    <input type="radio" name="popupPosition" value="left" style="cursor: pointer;"/>
+                                    <span style="color: #adadb8;">⬅️ Left</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; padding: 6px 12px; background: #2a2a2a; border-radius: 4px; font-size: 12px;">
+                                    <input type="radio" name="popupPosition" value="center" style="cursor: pointer;"/>
+                                    <span style="color: #adadb8;">🎯 Center</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; padding: 6px 12px; background: #2a2a2a; border-radius: 4px; font-size: 12px;">
+                                    <input type="radio" name="popupPosition" value="custom" style="cursor: pointer;"/>
+                                    <span style="color: #adadb8;">💾 Saved</span>
+                                </label>
+                            </div>
                         </div>
                     </div>
                     
-                    <button id="openKickChatPopup" 
-                            style="background: #53fc18; color: #000; padding: 15px 30px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-bottom: 15px; transition: transform 0.2s;">
-                        🪟 Open Kick Chat Popup
-                    </button>
-                    
-                    <div id="popupStatus" style="color: #adadb8; font-size: 14px; margin-top: 10px; display: none;">
+                    <div id="popupStatus" style="padding: 8px 12px; background: #1f1f23; border-top: 1px solid #2d2d30; font-size: 12px; text-align: center; display: none;">
                         <span id="popupStatusText"></span>
-                    </div>
-                    
-                    <div style="background: #2a2a2a; border-left: 3px solid #53fc18; padding: 15px; margin-top: 20px; border-radius: 5px; max-width: 500px;">
-                        <p style="color: #adadb8; font-size: 13px; line-height: 1.5; margin: 0;">
-                            <strong style="color: #53fc18;">💡 Pro Tips:</strong><br/>
-                            • <strong>Drag</strong> the popup by its title bar to move it<br/>
-                            • <strong>Resize</strong> from the corners/edges<br/>
-                            • Position is <strong>automatically saved</strong><br/>
-                            • Use Party Chat for watch party discussions
-                        </p>
                     </div>
                 </div>
             </div>
@@ -803,6 +805,25 @@
                 kickPlayer.src = playerUrl;
                 loading.style.display = 'none';
 
+                // Load Kick chat iframe (read-only view)
+                const kickChatIframe = document.getElementById('kickChatIframe');
+                const kickChatLoading = document.getElementById('kickChatLoading');
+                const kickChatUrl = `https://kick.com/popout/${data.streamerName}/chat`;
+                
+                console.log('Loading Kick chat iframe (read-only):', kickChatUrl);
+                kickChatIframe.src = kickChatUrl;
+                
+                kickChatIframe.onload = function() {
+                    console.log('✅ Kick chat iframe loaded');
+                    kickChatLoading.style.display = 'none';
+                    kickChatIframe.style.display = 'block';
+                };
+                
+                kickChatIframe.onerror = function() {
+                    console.error('❌ Failed to load Kick chat iframe');
+                    kickChatLoading.innerHTML = '<div style="color: #adadb8;">Failed to load chat. Click "🔐 Login to Chat" to open in popup.</div>';
+                };
+
                 // Setup Kick chat popup button
                 const openKickChatPopup = document.getElementById('openKickChatPopup');
                 const popupStatus = document.getElementById('popupStatus');
@@ -874,7 +895,7 @@
                     kickChatPopupWindow = window.open(kickChatUrl, 'KickChat', features);
                     
                     if (kickChatPopupWindow) {
-                        popupStatusText.textContent = `✅ Kick chat popup opened (${selectedPosition})! Drag to reposition, your spot will be saved.`;
+                        popupStatusText.textContent = `✅ Popup opened! You can now log in and chat with the streamer.`;
                         popupStatusText.style.color = '#53fc18';
                         popupStatus.style.display = 'block';
                         
