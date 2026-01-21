@@ -623,12 +623,12 @@
                 kickPlayer.src = playerUrl;
                 loading.style.display = 'none';
 
-                // Load Kick chat iframe
+                // Load Kick chat iframe using popout version (better CSP compatibility)
                 const kickChatIframe = document.getElementById('kickChatIframe');
                 const kickChatLoading = document.getElementById('kickChatLoading');
-                const kickChatUrl = `https://kick.com/${data.streamerName}/chatroom`;
+                const kickChatUrl = `https://kick.com/${data.streamerName}/chatroom/popout`;
                 
-                console.log('Setting Kick chat URL:', kickChatUrl);
+                console.log('Setting Kick popout chat URL:', kickChatUrl);
                 kickChatIframe.src = kickChatUrl;
                 
                 // Show iframe and hide loading after it loads
