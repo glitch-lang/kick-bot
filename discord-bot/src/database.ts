@@ -76,6 +76,89 @@ export class Database {
       )
     `);
     
+    await this.runQuery(`
+      CREATE TABLE IF NOT EXISTS account_links (
+        discord_user_id TEXT PRIMARY KEY,
+        kick_username TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    await this.runQuery(`
+      CREATE INDEX IF NOT EXISTS idx_kick_username ON account_links(kick_username)
+    `);
+    
+    await this.runQuery(`
+      CREATE TABLE IF NOT EXISTS chat_relays (
+        discord_channel_id TEXT PRIMARY KEY,
+        kick_streamer TEXT NOT NULL,
+        guild_id TEXT NOT NULL,
+        active INTEGER DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    await this.runQuery(`
+      CREATE TABLE IF NOT EXISTS watch_party_settings (
+        party_id TEXT PRIMARY KEY,
+        relay_to_kick INTEGER DEFAULT 0,
+        two_way_chat INTEGER DEFAULT 1,
+        streamer_name TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    await this.runQuery(`
+      CREATE TABLE IF NOT EXISTS auto_watch_parties (
+        guild_id TEXT NOT NULL,
+        discord_channel_id TEXT NOT NULL,
+        streamer_name TEXT NOT NULL,
+        auto_relay INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (guild_id, streamer_name)
+      )
+    `);
+
+    // OAuth tokens table - stores encrypted tokens
+    await this.runQuery(`
+      CREATE TABLE IF NOT EXISTS oauth_tokens (
+        user_id TEXT PRIMARY KEY,
+        encrypted_data TEXT NOT NULL,
+        iv TEXT NOT NULL,
+        auth_tag TEXT NOT NULL,
+        expires_at INTEGER NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // User sessions table - for session management
+    await this.runQuery(`
+      CREATE TABLE IF NOT EXISTS user_sessions (
+        session_id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        kick_username TEXT,
+        csrf_token TEXT NOT NULL,
+        expires_at INTEGER NOT NULL,
+        ip_address TEXT,
+        user_agent TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        last_activity DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Kick user profiles cache
+    await this.runQuery(`
+      CREATE TABLE IF NOT EXISTS kick_profiles (
+        kick_user_id INTEGER PRIMARY KEY,
+        username TEXT NOT NULL,
+        email TEXT,
+        avatar TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
     console.log('✅ Discord bot database initialized');
   }
 
@@ -145,5 +228,213 @@ export class Database {
 
   async getAllWebhooks(): Promise<Array<{discord_channel_id: string, webhook_url: string, guild_id: string}>> {
     return await this.allQuery('SELECT * FROM discord_webhooks');
+  }
+
+  // Account Linking
+  async linkAccount(discordUserId: string, kickUsername: string) {
+    await this.runQuery(
+      'INSERT OR REPLACE INTO account_links (discord_user_id, kick_username, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
+      [discordUserId, kickUsername.toLowerCase()]
+    );
+  }
+
+  async unlinkAccount(discordUserId: string) {
+    await this.runQuery('DELETE FROM account_links WHERE discord_user_id = ?', [discordUserId]);
+  }
+
+  async getLinkedKickUsername(discordUserId: string): Promise<string | null> {
+    const result: any = await this.getQuery(
+      'SELECT kick_username FROM account_links WHERE discord_user_id = ?',
+      [discordUserId]
+    );
+    return result ? result.kick_username : null;
+  }
+
+  async getLinkedDiscordId(kickUsername: string): Promise<string | null> {
+    const result: any = await this.getQuery(
+      'SELECT discord_user_id FROM account_links WHERE LOWER(kick_username) = LOWER(?)',
+      [kickUsername]
+    );
+    return result ? result.discord_user_id : null;
+  }
+
+  async getAllLinkedAccounts(): Promise<Array<{discord_user_id: string, kick_username: string}>> {
+    return await this.allQuery('SELECT discord_user_id, kick_username FROM account_links');
+  }
+
+  // Chat Relay
+  async saveChatRelay(channelId: string, kickStreamer: string, guildId: string) {
+    await this.runQuery(
+      'INSERT OR REPLACE INTO chat_relays (discord_channel_id, kick_streamer, guild_id) VALUES (?, ?, ?)',
+      [channelId, kickStreamer.toLowerCase(), guildId]
+    );
+  }
+
+  async removeChatRelay(channelId: string) {
+    await this.runQuery('DELETE FROM chat_relays WHERE discord_channel_id = ?', [channelId]);
+  }
+
+  async getChatRelay(channelId: string): Promise<{kick_streamer: string} | null> {
+    const result: any = await this.getQuery(
+      'SELECT kick_streamer FROM chat_relays WHERE discord_channel_id = ? AND active = 1',
+      [channelId]
+    );
+    return result;
+  }
+
+  async getAllActiveChatRelays(): Promise<Array<{discord_channel_id: string, kick_streamer: string, guild_id: string}>> {
+    return await this.allQuery('SELECT * FROM chat_relays WHERE active = 1');
+  }
+
+  // Watch Party Settings
+  async saveWatchPartySettings(partyId: string, settings: {relay_to_kick?: boolean, two_way_chat?: boolean, streamer_name?: string}) {
+    await this.runQuery(
+      'INSERT OR REPLACE INTO watch_party_settings (party_id, relay_to_kick, two_way_chat, streamer_name) VALUES (?, ?, ?, ?)',
+      [partyId, settings.relay_to_kick ? 1 : 0, settings.two_way_chat !== false ? 1 : 0, settings.streamer_name || null]
+    );
+  }
+
+  async getWatchPartySettings(partyId: string): Promise<{relay_to_kick: boolean, two_way_chat: boolean, streamer_name: string | null} | null> {
+    const result: any = await this.getQuery(
+      'SELECT relay_to_kick, two_way_chat, streamer_name FROM watch_party_settings WHERE party_id = ?',
+      [partyId]
+    );
+    if (!result) return null;
+    return {
+      relay_to_kick: result.relay_to_kick === 1,
+      two_way_chat: result.two_way_chat === 1,
+      streamer_name: result.streamer_name
+    };
+  }
+
+  async deleteWatchPartySettings(partyId: string) {
+    await this.runQuery('DELETE FROM watch_party_settings WHERE party_id = ?', [partyId]);
+  }
+
+  // Auto Watch Parties
+  async addAutoWatchParty(guildId: string, channelId: string, streamerName: string, autoRelay: boolean = false) {
+    await this.runQuery(
+      'INSERT OR REPLACE INTO auto_watch_parties (guild_id, discord_channel_id, streamer_name, auto_relay) VALUES (?, ?, ?, ?)',
+      [guildId, channelId, streamerName.toLowerCase(), autoRelay ? 1 : 0]
+    );
+  }
+
+  async removeAutoWatchParty(guildId: string, streamerName: string) {
+    await this.runQuery(
+      'DELETE FROM auto_watch_parties WHERE guild_id = ? AND LOWER(streamer_name) = LOWER(?)',
+      [guildId, streamerName]
+    );
+  }
+
+  async getAutoWatchParties(guildId?: string): Promise<Array<{guild_id: string, discord_channel_id: string, streamer_name: string, auto_relay: boolean}>> {
+    const query = guildId 
+      ? 'SELECT * FROM auto_watch_parties WHERE guild_id = ?'
+      : 'SELECT * FROM auto_watch_parties';
+    const params = guildId ? [guildId] : [];
+    const results: any[] = await this.allQuery(query, params);
+    return results.map(r => ({
+      guild_id: r.guild_id,
+      discord_channel_id: r.discord_channel_id,
+      streamer_name: r.streamer_name,
+      auto_relay: r.auto_relay === 1
+    }));
+  }
+
+  async getAllAutoWatchPartyStreamers(): Promise<Array<{guild_id: string, discord_channel_id: string, streamer_name: string, auto_relay: boolean}>> {
+    const results: any[] = await this.allQuery('SELECT * FROM auto_watch_parties');
+    return results.map(r => ({
+      guild_id: r.guild_id,
+      discord_channel_id: r.discord_channel_id,
+      streamer_name: r.streamer_name,
+      auto_relay: r.auto_relay === 1
+    }));
+  }
+
+  // OAuth Tokens Management
+  async saveOAuthTokens(userId: string, encryptedData: string, iv: string, authTag: string, expiresAt: number) {
+    await this.runQuery(
+      `INSERT OR REPLACE INTO oauth_tokens (user_id, encrypted_data, iv, auth_tag, expires_at, updated_at) 
+       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+      [userId, encryptedData, iv, authTag, expiresAt]
+    );
+  }
+
+  async getOAuthTokens(userId: string): Promise<{encrypted_data: string, iv: string, auth_tag: string, expires_at: number} | null> {
+    return await this.getQuery(
+      'SELECT encrypted_data, iv, auth_tag, expires_at FROM oauth_tokens WHERE user_id = ?',
+      [userId]
+    );
+  }
+
+  async deleteOAuthTokens(userId: string) {
+    await this.runQuery('DELETE FROM oauth_tokens WHERE user_id = ?', [userId]);
+  }
+
+  // User Sessions Management
+  async createSession(sessionId: string, userId: string, csrfToken: string, expiresAt: number, ipAddress?: string, userAgent?: string) {
+    await this.runQuery(
+      `INSERT INTO user_sessions (session_id, user_id, csrf_token, expires_at, ip_address, user_agent) 
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [sessionId, userId, csrfToken, expiresAt, ipAddress || null, userAgent || null]
+    );
+  }
+
+  async getSession(sessionId: string): Promise<any> {
+    return await this.getQuery(
+      'SELECT * FROM user_sessions WHERE session_id = ? AND expires_at > ?',
+      [sessionId, Math.floor(Date.now() / 1000)]
+    );
+  }
+
+  async updateSessionActivity(sessionId: string) {
+    await this.runQuery(
+      'UPDATE user_sessions SET last_activity = CURRENT_TIMESTAMP WHERE session_id = ?',
+      [sessionId]
+    );
+  }
+
+  async updateSessionKickUsername(sessionId: string, kickUsername: string) {
+    await this.runQuery(
+      'UPDATE user_sessions SET kick_username = ? WHERE session_id = ?',
+      [kickUsername, sessionId]
+    );
+  }
+
+  async deleteSession(sessionId: string) {
+    await this.runQuery('DELETE FROM user_sessions WHERE session_id = ?', [sessionId]);
+  }
+
+  async deleteExpiredSessions() {
+    await this.runQuery(
+      'DELETE FROM user_sessions WHERE expires_at < ?',
+      [Math.floor(Date.now() / 1000)]
+    );
+  }
+
+  async deleteUserSessions(userId: string) {
+    await this.runQuery('DELETE FROM user_sessions WHERE user_id = ?', [userId]);
+  }
+
+  // Kick Profile Cache
+  async saveKickProfile(kickUserId: number, username: string, email?: string, avatar?: string) {
+    await this.runQuery(
+      `INSERT OR REPLACE INTO kick_profiles (kick_user_id, username, email, avatar, updated_at) 
+       VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+      [kickUserId, username, email || null, avatar || null]
+    );
+  }
+
+  async getKickProfile(kickUserId: number): Promise<{username: string, email: string | null, avatar: string | null} | null> {
+    return await this.getQuery(
+      'SELECT username, email, avatar FROM kick_profiles WHERE kick_user_id = ?',
+      [kickUserId]
+    );
+  }
+
+  async getKickProfileByUsername(username: string): Promise<{kick_user_id: number, email: string | null, avatar: string | null} | null> {
+    return await this.getQuery(
+      'SELECT kick_user_id, email, avatar FROM kick_profiles WHERE username = ?',
+      [username.toLowerCase()]
+    );
   }
 }

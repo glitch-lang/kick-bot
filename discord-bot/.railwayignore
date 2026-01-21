@@ -1,0 +1,14 @@
+# Don't upload these to Railway
+node_modules/
+.env
+.env.local
+*.log
+.git/
+dist/
+*.db
+*.db-journal
+data/
+.vscode/
+.idea/
+tmp/
+temp/

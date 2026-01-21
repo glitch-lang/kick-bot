@@ -1,8 +1,13 @@
-import { Client, GatewayIntentBits, EmbedBuilder, ChannelType, TextChannel, VoiceChannel } from 'discord.js';
+import { Client, GatewayIntentBits, EmbedBuilder, ChannelType, TextChannel, VoiceChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import axios from 'axios';
 import * as dotenv from 'dotenv';
+import crypto from 'crypto';
+import localtunnel from 'localtunnel';
 import { Database } from './database';
 import { StreamManager } from './stream-manager';
+import { BrowserStreamManager } from './browser-stream-manager';
+import { WatchPartyServer } from './watch-party-server';
+import { AuthManager } from './auth-manager';
 
 dotenv.config();
 
@@ -17,16 +22,204 @@ const client = new Client({
 
 const db = new Database();
 const KICK_API_URL = process.env.KICK_BOT_API_URL || 'https://web-production-56232.up.railway.app';
+let PUBLIC_URL = process.env.PUBLIC_URL || 'http://localhost:3001';
+const ENABLE_TUNNEL = process.env.ENABLE_TUNNEL === 'true' || false;
+
+// Initialize AuthManager for Discord username tokens
+const DISCORD_TOKEN_KEY = process.env.ENCRYPTION_KEY || process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const discordAuthManager = new AuthManager(DISCORD_TOKEN_KEY);
 
 // Initialize StreamManager for voice streaming
 const streamManager = new StreamManager(KICK_API_URL);
+const browserStreamManager = new BrowserStreamManager();
+
+// Initialize Watch Party Server with optional OAuth
+let watchPartyServer: WatchPartyServer;
+if (process.env.KICK_OAUTH_CLIENT_ID && process.env.KICK_OAUTH_CLIENT_SECRET && 
+    process.env.SESSION_SECRET && process.env.ENCRYPTION_KEY) {
+  // OAuth enabled
+  watchPartyServer = new WatchPartyServer(3001, KICK_API_URL, db, {
+    clientId: process.env.KICK_OAUTH_CLIENT_ID,
+    clientSecret: process.env.KICK_OAUTH_CLIENT_SECRET,
+    redirectUri: process.env.KICK_OAUTH_REDIRECT_URI || `${PUBLIC_URL}/auth/callback`,
+    sessionSecret: process.env.SESSION_SECRET,
+    encryptionKey: process.env.ENCRYPTION_KEY
+  }, discordAuthManager);
+} else {
+  // OAuth disabled
+  watchPartyServer = new WatchPartyServer(3001, KICK_API_URL, undefined, undefined, discordAuthManager);
+  console.log('ℹ️  OAuth login disabled (set KICK_OAUTH_* env vars to enable)');
+}
+
+// Start LocalTunnel if enabled
+async function startTunnel() {
+  if (!ENABLE_TUNNEL) {
+    console.log('🌐 LocalTunnel disabled (set ENABLE_TUNNEL=true in .env to enable)');
+    return;
+  }
+
+  try {
+    console.log('🌐 Starting LocalTunnel for public access...');
+    const tunnel = await localtunnel({ 
+      port: 3001,
+      subdomain: process.env.TUNNEL_SUBDOMAIN || undefined
+    });
+
+    PUBLIC_URL = tunnel.url;
+    console.log('');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🎉 PUBLIC URL ACTIVE!');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('');
+    console.log(`   🔗 Your watch parties are now public at:`);
+    console.log(`   ${PUBLIC_URL}`);
+    console.log('');
+    console.log(`   Share this URL with anyone in the world! 🌍`);
+    console.log('');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('');
+
+    // Update OAuth redirect URI if OAuth is enabled
+    if (watchPartyServer && process.env.KICK_OAUTH_CLIENT_ID) {
+      console.log(`ℹ️  OAuth redirect URI: ${PUBLIC_URL}/auth/callback`);
+      console.log(`   (Update this in Kick Developer Portal if needed)`);
+      console.log('');
+    }
+
+    tunnel.on('close', () => {
+      console.log('⚠️  LocalTunnel closed. Restarting...');
+      setTimeout(startTunnel, 5000);
+    });
+
+    tunnel.on('error', (err: Error) => {
+      console.error('❌ LocalTunnel error:', err.message);
+      console.log('   Retrying in 5 seconds...');
+      setTimeout(startTunnel, 5000);
+    });
+
+  } catch (error: any) {
+    console.error('❌ Failed to start LocalTunnel:', error.message);
+    console.log('   Using local URL instead: http://localhost:3001');
+    console.log('   To fix: npm install -g localtunnel');
+  }
+}
+
+// Start tunnel after a short delay (let watch party server start first)
+setTimeout(startTunnel, 2000);
+
+const activeWatchParties = new Map<string, string>(); // channelId -> partyId
+const autoWatchPartyChannels = new Map<string, Set<string>>(); // guildId -> Set<streamerNames>
 
 // Track which Discord channels are watching which Kick streams
 const watchParties = new Map<string, string>(); // channelId -> kickChannelName
+const liveStreamers = new Set<string>(); // Track which streamers are currently live
 
-client.once('ready', () => {
+// Check if streamers are live and auto-create watch parties
+async function checkLiveStreamers() {
+  try {
+    const autoParties = await db.getAllAutoWatchPartyStreamers();
+    if (autoParties.length === 0) return;
+    
+    console.log(`🔍 Checking ${autoParties.length} auto watch party configurations...`);
+    
+    for (const ap of autoParties) {
+      try {
+        // Check if streamer is live
+        const response = await axios.get(`${KICK_API_URL}/api/kick/streamer/${ap.streamer_name}`);
+        const streamData = response.data;
+        
+        const isLive = streamData.is_live === true;
+        const wasLive = liveStreamers.has(ap.streamer_name);
+        
+        // If streamer just went live (transition from offline to live)
+        if (isLive && !wasLive) {
+          liveStreamers.add(ap.streamer_name);
+          console.log(`🟢 ${ap.streamer_name} went live! Creating auto watch party...`);
+          
+          // Check if party already exists for this channel
+          if (activeWatchParties.has(ap.discord_channel_id)) {
+            console.log(`⏭️ Watch party already active in channel ${ap.discord_channel_id}, skipping`);
+            continue;
+          }
+          
+          // Create watch party
+          const partyId = watchPartyServer.createWatchParty(
+            ap.streamer_name,
+            ap.guild_id,
+            'Discord Server', // We don't have guild name here easily
+            ap.auto_relay
+          );
+          
+          activeWatchParties.set(ap.discord_channel_id, partyId);
+          
+          // Save settings
+          await db.saveWatchPartySettings(partyId, {
+            relay_to_kick: ap.auto_relay,
+            two_way_chat: true,
+            streamer_name: ap.streamer_name
+          });
+          
+          // Get watch party URL
+          const partyUrl = `${PUBLIC_URL}/party/${partyId}`;
+          
+          // Post to Discord channel
+          const channel = await client.channels.fetch(ap.discord_channel_id) as TextChannel;
+          if (channel) {
+            const embed = new EmbedBuilder()
+              .setColor(0x53fc18)
+              .setTitle(`🔴 ${ap.streamer_name} is now LIVE!`)
+              .setDescription(
+                `**Watch Party Auto-Created!**\n\n` +
+                `🔗 **Join here:** ${partyUrl}\n\n` +
+                `**Stream Info:**\n` +
+                `📺 **Title:** ${streamData.session_title || 'Live Stream'}\n` +
+                `🎮 **Category:** ${streamData.category || 'Gaming'}\n` +
+                `👥 **Viewers:** ${streamData.viewer_count || 0}\n\n` +
+                `${ap.auto_relay ? '📤 Kick chat relay is **ENABLED** ✅\n' : ''}` +
+                `**Features:**\n` +
+                `🎥 Synchronized video + audio\n` +
+                `💬 Shared chat\n` +
+                `👥 See who's watching`
+              )
+              .setThumbnail(streamData.thumbnail || `https://kick.com/${ap.streamer_name}/thumb.jpg`)
+              .addFields({
+                name: '📺 Watch on Kick',
+                value: `https://kick.com/${ap.streamer_name}`,
+                inline: false
+              })
+              .setFooter({ text: 'Auto-created watch party • Use !kick endparty to end' })
+              .setTimestamp();
+            
+            await channel.send({ content: '@here', embeds: [embed] });
+            console.log(`✅ Posted watch party for ${ap.streamer_name} in channel ${ap.discord_channel_id}`);
+          }
+        }
+        
+        // If streamer went offline
+        if (!isLive && wasLive) {
+          liveStreamers.delete(ap.streamer_name);
+          console.log(`🔴 ${ap.streamer_name} went offline`);
+        }
+        
+      } catch (error: any) {
+        // Silently skip errors for individual streamers
+        if (error.response?.status !== 404) {
+          console.error(`Error checking ${ap.streamer_name}:`, error.message);
+        }
+      }
+    }
+    
+  } catch (error) {
+    console.error('Error in checkLiveStreamers:', error);
+  }
+}
+
+client.once('ready', async () => {
   console.log(`✅ Discord bot logged in as ${client.user?.tag}`);
   console.log(`📡 Connected to ${client.guilds.cache.size} servers`);
+  
+  // Start watch party server
+  await watchPartyServer.start();
   
   // Load watch parties from database
   db.loadWatchParties().then(parties => {
@@ -35,6 +228,24 @@ client.once('ready', () => {
     });
     console.log(`📺 Loaded ${watchParties.size} watch parties`);
   });
+  
+  // Load auto watch parties from database
+  db.getAllAutoWatchPartyStreamers().then(autoParties => {
+    autoParties.forEach(ap => {
+      if (!autoWatchPartyChannels.has(ap.guild_id)) {
+        autoWatchPartyChannels.set(ap.guild_id, new Set());
+      }
+      autoWatchPartyChannels.get(ap.guild_id)!.add(ap.streamer_name);
+    });
+    console.log(`🤖 Loaded ${autoParties.length} auto watch party configurations`);
+  });
+  
+  // Start checking for live streamers (every 2 minutes)
+  setInterval(checkLiveStreamers, 120000);
+  console.log('🔍 Started live streamer checker (every 2 minutes)');
+  
+  // Also check immediately on startup
+  setTimeout(checkLiveStreamers, 10000); // Wait 10s after startup
   
   // Start checking for live streams
   setInterval(() => checkLiveStreams(), 60000); // Check every minute
@@ -82,6 +293,54 @@ client.on('messageCreate', async (message) => {
     return;
   }
   
+  // Command: !kick browserstream <streamer> (browser-based streaming)
+  if (content.startsWith('!kick browserstream ')) {
+    await handleBrowserStreamCommand(message);
+    return;
+  }
+  
+  // Command: !kick watchparty <streamer> (web-based watch party)
+  if (content.startsWith('!kick watchparty ')) {
+    await handleWatchPartyCommand(message);
+    return;
+  }
+  
+  // Command: !kick endparty (end watch party)
+  if (content.startsWith('!kick endparty')) {
+    await handleEndPartyCommand(message);
+    return;
+  }
+  
+  // Command: !kick relayon (enable kick chat relay for watch party)
+  if (content.startsWith('!kick relayon')) {
+    await handleRelayToggleCommand(message, true);
+    return;
+  }
+  
+  // Command: !kick relayoff (disable kick chat relay for watch party)
+  if (content.startsWith('!kick relayoff')) {
+    await handleRelayToggleCommand(message, false);
+    return;
+  }
+  
+  // Command: !kick autoparty add <streamer> (auto-create watch party when streamer goes live)
+  if (content.startsWith('!kick autoparty add ')) {
+    await handleAutoPartyAddCommand(message);
+    return;
+  }
+  
+  // Command: !kick autoparty remove <streamer>
+  if (content.startsWith('!kick autoparty remove ')) {
+    await handleAutoPartyRemoveCommand(message);
+    return;
+  }
+  
+  // Command: !kick autoparty list
+  if (content.startsWith('!kick autoparty list') || content.startsWith('!kick autoparty')) {
+    await handleAutoPartyListCommand(message);
+    return;
+  }
+  
   // Command: !kick online
   if (content.startsWith('!kick online')) {
     await handleOnlineCommand(message);
@@ -110,6 +369,58 @@ client.on('messageCreate', async (message) => {
   if (content.startsWith('!kick help')) {
     await handleHelpCommand(message);
     return;
+  }
+});
+
+// Handle button interactions
+client.on('interactionCreate', async (interaction) => {
+  if (!interaction.isButton()) return;
+
+  if (interaction.customId.startsWith('join_party_')) {
+    const partyId = interaction.customId.replace('join_party_', '');
+    const username = interaction.user.username;
+    const userId = interaction.user.id;
+
+    // Generate signed token with Discord info
+    const token = discordAuthManager.generateDiscordToken(username, userId);
+    const personalUrl = `${PUBLIC_URL}/party/${partyId}?discord=${token}`;
+
+    try {
+      // Send DM with personal link
+      await interaction.user.send({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0x9147ff)
+            .setTitle('🎫 Your Personal Watch Party Link')
+            .setDescription(
+              `Hey ${username}! Here's your personal link:\n\n` +
+              `🔗 ${personalUrl}\n\n` +
+              `**What's special about this link:**\n` +
+              `✅ Your Discord username is auto-filled\n` +
+              `✅ Ready to chat instantly\n` +
+              `✅ Secure and signed just for you\n\n` +
+              `**This link expires in 24 hours**`
+            )
+            .setTimestamp()
+        ]
+      });
+
+      // Acknowledge the button click
+      await interaction.reply({
+        content: '✅ Check your DMs! I sent you a personal link with your username pre-filled.',
+        ephemeral: true
+      });
+
+      console.log(`🎫 Generated personal link for ${username} (${userId}) - party ${partyId}`);
+
+    } catch (error) {
+      console.error('Error sending personal link:', error);
+      await interaction.reply({
+        content: '❌ Could not send DM. Please make sure your DMs are open!\n\n' +
+                 `You can still use the public link: ${PUBLIC_URL}/party/${partyId}`,
+        ephemeral: true
+      });
+    }
   }
 });
 
@@ -361,8 +672,16 @@ async function handleHelpCommand(message: any) {
         value: '`!kick watch <streamer>` - Get notified when streamer goes live\n`!kick unwatch` - Stop watching',
       },
       {
-        name: '🎵 Voice Streaming (NEW!)',
-        value: '`!kick stream <streamer>` - Stream Kick audio to your voice channel\n`!kick stopstream` - Stop streaming\n`!kick streams` - Show active streams',
+        name: '🎵 Voice Streaming',
+        value: '`!kick stream <streamer>` - Fast streaming (optimized)\n`!kick browserstream <streamer>` - Browser mode (more reliable)\n`!kick stopstream` - Stop streaming\n`!kick streams` - Show active streams',
+      },
+      {
+        name: '🎬 Watch Party',
+        value: '`!kick watchparty <streamer> [relay]` - Create web watch party (two-way chat included)\n`!kick relayon` - Enable Kick chat relay\n`!kick relayoff` - Disable Kick chat relay\n`!kick endparty` - End watch party',
+      },
+      {
+        name: '🤖 Auto Watch Party (NEW!)',
+        value: '`!kick autoparty add <streamer> [relay]` - Auto-create when live\n`!kick autoparty remove <streamer>` - Remove auto-create\n`!kick autoparty list` - List all auto watch parties',
       },
       {
         name: '❓ Help',
@@ -435,7 +754,7 @@ async function handleStreamCommand(message: any) {
   const parts = message.content.split(' ').slice(2); // Remove "!kick stream"
   
   if (parts.length === 0) {
-    await message.reply('❌ Usage: `!kick stream <streamer>`\nExample: `!kick stream realglitchdyeet`\n\n⚠️ **Note:** You must be in a voice channel first!');
+    await message.reply('❌ Usage: `!kick stream <streamer>`\nExample: `!kick stream realglitchdyeet`\n\n⚠️ **Note:** You must be in a voice channel first!\n\n💡 **Tip:** Try `!kick browserstream <streamer>` for more reliable streaming!');
     return;
   }
   
@@ -450,7 +769,7 @@ async function handleStreamCommand(message: any) {
   
   const voiceChannel = member.voice.channel as VoiceChannel;
   
-  await message.reply(`🎬 Starting stream of **${streamerName}**...\n\n⏳ Connecting to Kick stream (this may take 5-10 seconds)...`);
+  await message.reply(`🎬 Starting stream of **${streamerName}** (Fast Mode)...\n\n⏳ Connecting to Kick stream (optimized for low latency)...`);
   
   try {
     const result = await streamManager.startWatchParty(
@@ -467,6 +786,39 @@ async function handleStreamCommand(message: any) {
   }
 }
 
+async function handleBrowserStreamCommand(message: any) {
+  const parts = message.content.split(' ').slice(2); // Remove "!kick browserstream"
+  
+  if (parts.length === 0) {
+    await message.reply('❌ Usage: `!kick browserstream <streamer>`\nExample: `!kick browserstream realglitchdyeet`\n\n🌐 **Browser Mode:** Opens a real browser and captures the stream (more reliable but slower)');
+    return;
+  }
+  
+  const streamerName = parts[0].toLowerCase();
+  
+  // Check if user is in a voice channel
+  const member = message.member;
+  if (!member?.voice.channel) {
+    await message.reply('❌ You must join a voice channel first before I can stream!');
+    return;
+  }
+  
+  const voiceChannel = member.voice.channel as VoiceChannel;
+  
+  try {
+    const result = await browserStreamManager.startBrowserStream(
+      streamerName,
+      voiceChannel,
+      message.channel as TextChannel
+    );
+    
+    console.log(`Browser stream result: ${result}`);
+  } catch (error: any) {
+    console.error('Browser stream command error:', error);
+    await message.reply(`❌ Error starting browser stream: ${error.message}`);
+  }
+}
+
 async function handleStopStreamCommand(message: any) {
   const guildId = message.guild?.id;
   
@@ -476,8 +828,19 @@ async function handleStopStreamCommand(message: any) {
   }
   
   try {
-    const result = await streamManager.stopWatchParty(guildId);
-    await message.reply(result);
+    // Try stopping both types of streams
+    const normalResult = await streamManager.stopWatchParty(guildId);
+    const browserResult = await browserStreamManager.stopBrowserStream(guildId);
+    
+    // Combine results
+    if (normalResult.includes('No active') && browserResult.includes('No active')) {
+      await message.reply('❌ No active streams in this server!');
+    } else {
+      const messages = [];
+      if (!normalResult.includes('No active')) messages.push(normalResult);
+      if (!browserResult.includes('No active')) messages.push(browserResult);
+      await message.reply(messages.join('\n'));
+    }
   } catch (error: any) {
     console.error('Stop stream error:', error);
     await message.reply(`❌ Error stopping stream: ${error.message}`);
@@ -510,6 +873,275 @@ async function handleActiveStreamsCommand(message: any) {
     .setTimestamp();
   
   await message.reply({ embeds: [embed] });
+}
+
+// WATCH PARTY COMMANDS
+async function handleWatchPartyCommand(message: any) {
+  const parts = message.content.split(' ').slice(2); // Remove "!kick watchparty"
+  
+  if (parts.length === 0) {
+    await message.reply('❌ Usage: `!kick watchparty <streamer> [relay]`\nExample: `!kick watchparty bbjess`\nExample with relay: `!kick watchparty bbjess relay`\n\n🎬 Creates a synchronized web watch party with video, audio, and chat!\n📤 Add `relay` to send watch party messages to Kick chat!');
+    return;
+  }
+  
+  const streamerName = parts[0].toLowerCase();
+  const relayEnabled = parts[1]?.toLowerCase() === 'relay';
+  const guildId = message.guild?.id;
+  const channelId = message.channel?.id;
+  
+  if (!guildId || !channelId) {
+    await message.reply('❌ This command can only be used in a server!');
+    return;
+  }
+  
+  // Check if party already exists for this channel
+  if (activeWatchParties.has(channelId)) {
+    await message.reply('❌ A watch party is already active in this channel! Use `!kick endparty` to end it first.');
+    return;
+  }
+  
+  try {
+    // Create watch party
+    const partyId = watchPartyServer.createWatchParty(
+      streamerName,
+      guildId,
+      message.guild?.name || 'Discord Server',
+      relayEnabled
+    );
+    
+    activeWatchParties.set(channelId, partyId);
+    
+    // Save settings to database
+    await db.saveWatchPartySettings(partyId, {
+      relay_to_kick: relayEnabled,
+      two_way_chat: true, // Always enable two-way chat for now
+      streamer_name: streamerName
+    });
+    
+    // Get watch party URL
+    const partyUrl = `${PUBLIC_URL}/party/${partyId}`;
+    
+    // Create button for personalized link
+    const button = new ButtonBuilder()
+      .setCustomId(`join_party_${partyId}`)
+      .setLabel('🎫 Get Your Personal Link')
+      .setStyle(ButtonStyle.Primary);
+    
+    const row = new ActionRowBuilder<ButtonBuilder>()
+      .addComponents(button);
+    
+    // Send embed with link
+    const embed = new EmbedBuilder()
+      .setColor(0x9147ff)
+      .setTitle(`🎬 Watch Party Created: ${streamerName}`)
+      .setDescription(
+        `**Your synchronized watch party is ready!**\n\n` +
+        `🔗 **Public Link:** ${partyUrl}\n` +
+        `🎫 **Or click button below** for a personal link with your Discord username auto-filled!\n\n` +
+        `**Features:**\n` +
+        `🎥 Live Kick stream (video + audio)\n` +
+        `💬 Shared chat with Discord\n` +
+        `👥 See who's watching\n` +
+        `🔄 Perfect synchronization\n` +
+        `${relayEnabled ? '📤 **Messages relay to Kick chat** ✅\n' : ''}`
+      )
+      .addFields({
+        name: '📺 Direct Kick Link',
+        value: `https://kick.com/${streamerName}`,
+        inline: false
+      })
+      .setFooter({ text: relayEnabled ? 'Use !kick relayoff to disable Kick relay • !kick endparty to end' : 'Use !kick relayon to relay messages to Kick • !kick endparty to end' })
+      .setTimestamp();
+    
+    await message.reply({ embeds: [embed], components: [row] });
+    
+    console.log(`🎬 Created watch party ${partyId} for ${streamerName} in ${message.guild?.name} (relay: ${relayEnabled})`);
+    
+  } catch (error: any) {
+    console.error('Error creating watch party:', error);
+    await message.reply(`❌ Failed to create watch party: ${error.message}`);
+  }
+}
+
+async function handleEndPartyCommand(message: any) {
+  const channelId = message.channel?.id;
+  
+  if (!channelId) {
+    await message.reply('❌ Could not identify channel!');
+    return;
+  }
+  
+  const partyId = activeWatchParties.get(channelId);
+  
+  if (!partyId) {
+    await message.reply('❌ No active watch party in this channel!');
+    return;
+  }
+  
+  try {
+    watchPartyServer.deleteWatchParty(partyId);
+    activeWatchParties.delete(channelId);
+    await db.deleteWatchPartySettings(partyId);
+    
+    await message.reply('✅ Watch party ended! Thanks for watching together! 🎬');
+    console.log(`🛑 Ended watch party ${partyId}`);
+    
+  } catch (error: any) {
+    console.error('Error ending watch party:', error);
+    await message.reply(`❌ Failed to end watch party: ${error.message}`);
+  }
+}
+
+async function handleRelayToggleCommand(message: any, enabled: boolean) {
+  const channelId = message.channel?.id;
+  
+  if (!channelId) {
+    await message.reply('❌ Could not identify channel!');
+    return;
+  }
+  
+  const partyId = activeWatchParties.get(channelId);
+  
+  if (!partyId) {
+    await message.reply('❌ No active watch party in this channel! Create one with `!kick watchparty <streamer>`');
+    return;
+  }
+  
+  try {
+    const success = watchPartyServer.setRelayToKick(partyId, enabled);
+    
+    if (!success) {
+      await message.reply('❌ Watch party not found!');
+      return;
+    }
+    
+    // Update database
+    await db.saveWatchPartySettings(partyId, { relay_to_kick: enabled });
+    
+    if (enabled) {
+      await message.reply('✅ **Kick chat relay ENABLED!**\n\n📤 Messages sent in the watch party will now appear in the Kick streamer\'s chat with a `[Watch Party]` prefix.');
+    } else {
+      await message.reply('✅ **Kick chat relay DISABLED!**\n\n💬 Messages in the watch party will stay private (watch party only).');
+    }
+    
+    console.log(`${enabled ? '✅' : '❌'} Relay ${enabled ? 'enabled' : 'disabled'} for party ${partyId}`);
+    
+  } catch (error: any) {
+    console.error('Error toggling relay:', error);
+    await message.reply(`❌ Failed to toggle relay: ${error.message}`);
+  }
+}
+
+// AUTO WATCH PARTY COMMANDS
+async function handleAutoPartyAddCommand(message: any) {
+  const parts = message.content.split(' ').slice(3); // Remove "!kick autoparty add"
+  
+  if (parts.length === 0) {
+    await message.reply('❌ Usage: `!kick autoparty add <streamer> [relay]`\nExample: `!kick autoparty add bbjess`\nExample with relay: `!kick autoparty add bbjess relay`\n\n🤖 Auto-creates a watch party when the streamer goes live!');
+    return;
+  }
+  
+  const streamerName = parts[0].toLowerCase();
+  const autoRelay = parts[1]?.toLowerCase() === 'relay';
+  const guildId = message.guild?.id;
+  const channelId = message.channel?.id;
+  
+  if (!guildId || !channelId) {
+    await message.reply('❌ This command can only be used in a server!');
+    return;
+  }
+  
+  try {
+    await db.addAutoWatchParty(guildId, channelId, streamerName, autoRelay);
+    
+    // Add to memory map
+    if (!autoWatchPartyChannels.has(guildId)) {
+      autoWatchPartyChannels.set(guildId, new Set());
+    }
+    autoWatchPartyChannels.get(guildId)!.add(streamerName);
+    
+    await message.reply(
+      `✅ **Auto Watch Party enabled for ${streamerName}!**\n\n` +
+      `🤖 When ${streamerName} goes live, a watch party will automatically be created in this channel.\n` +
+      `${autoRelay ? '📤 Kick relay will be enabled automatically.\n' : ''}` +
+      `\n💡 Use \`!kick autoparty list\` to see all auto watch parties.`
+    );
+    
+    console.log(`🤖 Auto watch party added: ${streamerName} in guild ${guildId} (relay: ${autoRelay})`);
+    
+  } catch (error: any) {
+    console.error('Error adding auto watch party:', error);
+    await message.reply(`❌ Failed to add auto watch party: ${error.message}`);
+  }
+}
+
+async function handleAutoPartyRemoveCommand(message: any) {
+  const parts = message.content.split(' ').slice(3); // Remove "!kick autoparty remove"
+  
+  if (parts.length === 0) {
+    await message.reply('❌ Usage: `!kick autoparty remove <streamer>`\nExample: `!kick autoparty remove bbjess`');
+    return;
+  }
+  
+  const streamerName = parts[0].toLowerCase();
+  const guildId = message.guild?.id;
+  
+  if (!guildId) {
+    await message.reply('❌ This command can only be used in a server!');
+    return;
+  }
+  
+  try {
+    await db.removeAutoWatchParty(guildId, streamerName);
+    
+    // Remove from memory map
+    autoWatchPartyChannels.get(guildId)?.delete(streamerName);
+    
+    await message.reply(`✅ Auto watch party removed for **${streamerName}**.`);
+    console.log(`🗑️ Auto watch party removed: ${streamerName} from guild ${guildId}`);
+    
+  } catch (error: any) {
+    console.error('Error removing auto watch party:', error);
+    await message.reply(`❌ Failed to remove auto watch party: ${error.message}`);
+  }
+}
+
+async function handleAutoPartyListCommand(message: any) {
+  const guildId = message.guild?.id;
+  
+  if (!guildId) {
+    await message.reply('❌ This command can only be used in a server!');
+    return;
+  }
+  
+  try {
+    const autoParties = await db.getAutoWatchParties(guildId);
+    
+    if (autoParties.length === 0) {
+      await message.reply('ℹ️ No auto watch parties configured for this server.\n\nUse `!kick autoparty add <streamer>` to add one!');
+      return;
+    }
+    
+    const embed = new EmbedBuilder()
+      .setColor(0x9147ff)
+      .setTitle('🤖 Auto Watch Parties')
+      .setDescription(
+        `**${autoParties.length} streamer(s) configured:**\n\n` +
+        autoParties.map((ap, i) => 
+          `${i + 1}. **${ap.streamer_name}**\n` +
+          `   Channel: <#${ap.discord_channel_id}>\n` +
+          `   Relay: ${ap.auto_relay ? '✅ Enabled' : '❌ Disabled'}`
+        ).join('\n\n')
+      )
+      .setFooter({ text: 'Watch parties will be created automatically when these streamers go live!' })
+      .setTimestamp();
+    
+    await message.reply({ embeds: [embed] });
+    
+  } catch (error: any) {
+    console.error('Error listing auto watch parties:', error);
+    await message.reply(`❌ Failed to list auto watch parties: ${error.message}`);
+  }
 }
 
 // Handle incoming responses from Kick streamers

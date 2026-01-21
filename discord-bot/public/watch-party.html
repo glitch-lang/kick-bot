@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kick Watch Party</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #18181b;
+            color: #efeff1;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: #0e0e10;
+            padding: 15px 20px;
+            border-bottom: 2px solid #9147ff;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 20px;
+            color: #9147ff;
+        }
+
+        .header-right {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .auth-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #1f1f23;
+            padding: 6px 12px;
+            border-radius: 15px;
+            font-size: 13px;
+        }
+
+        .auth-avatar {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 2px solid #53fc18;
+        }
+
+        .login-btn, .logout-btn {
+            background: #9147ff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        .login-btn:hover {
+            background: #7c30d6;
+        }
+
+        .logout-btn {
+            background: #eb0400;
+        }
+
+        .logout-btn:hover {
+            background: #c10300;
+        }
+
+        .viewer-count {
+            background: #9147ff;
+            padding: 5px 15px;
+            border-radius: 15px;
+            font-size: 14px;
+        }
+
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .video-container {
+            flex: 1;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .video-container iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+
+        .spinner {
+            border: 4px solid #333;
+            border-top: 4px solid #9147ff;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .sidebar {
+            width: 350px;
+            background: #0e0e10;
+            border-left: 1px solid #2d2d30;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .tabs {
+            display: flex;
+            background: #18181b;
+            border-bottom: 1px solid #2d2d30;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 15px;
+            text-align: center;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            background: #1f1f23;
+        }
+
+        .tab.active {
+            border-bottom-color: #9147ff;
+            color: #9147ff;
+        }
+
+        .tab-content {
+            flex: 1;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .tab-content.active {
+            display: flex;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+
+        .chat-message {
+            margin-bottom: 12px;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .chat-message .username {
+            font-weight: bold;
+            margin-right: 5px;
+        }
+
+        .chat-message.discord .username {
+            color: #5865f2;
+        }
+
+        .chat-message.kick .username {
+            color: #53fc18;
+        }
+
+        .chat-message .timestamp {
+            font-size: 11px;
+            color: #adadb8;
+            margin-left: 5px;
+        }
+
+        .chat-input-container {
+            padding: 15px;
+            background: #18181b;
+            border-top: 1px solid #2d2d30;
+        }
+
+        .username-input {
+            width: 100%;
+            padding: 10px;
+            background: #0e0e10;
+            border: 1px solid #2d2d30;
+            border-radius: 5px;
+            color: #efeff1;
+            margin-bottom: 10px;
+        }
+
+        .chat-input-wrapper {
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 10px;
+            background: #0e0e10;
+            border: 1px solid #2d2d30;
+            border-radius: 5px;
+            color: #efeff1;
+        }
+
+        .send-button {
+            padding: 10px 20px;
+            background: #9147ff;
+            border: none;
+            border-radius: 5px;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+
+        .send-button:hover {
+            background: #772ce8;
+        }
+
+        .send-button:disabled {
+            background: #333;
+            cursor: not-allowed;
+        }
+
+        .viewers-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+
+        .viewer-item {
+            padding: 10px;
+            background: #18181b;
+            border-radius: 5px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .viewer-avatar {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: #53fc18;
+            border-radius: 50%;
+            display: inline-block;
+            margin-left: 5px;
+        }
+
+        input::placeholder {
+            color: #adadb8;
+        }
+
+        input:focus, button:focus {
+            outline: 2px solid #9147ff;
+        }
+
+        @media (max-width: 768px) {
+            .main-container {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                height: 50%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎬 Watch Party</h1>
+        <div class="header-right">
+            <div id="twoWayStatus" style="background: #333; padding: 5px 15px; border-radius: 15px; font-size: 12px; display: none;">
+                🔄 Two-Way Chat
+            </div>
+            <div id="relayStatus" style="background: #333; padding: 5px 15px; border-radius: 15px; font-size: 12px; display: none;">
+                📤 Kick Relay
+            </div>
+            <div id="authContainer" style="display: none;">
+                <div class="auth-status" id="authStatus">
+                    <img id="authAvatar" class="auth-avatar" src="" alt="Avatar" style="display: none;">
+                    <span id="authUsername">Guest</span>
+                </div>
+                <button class="logout-btn" id="logoutBtn" style="display: none;">Logout</button>
+            </div>
+            <button class="login-btn" id="loginBtn" style="display: none;">🔐 Login with Kick</button>
+            <div class="viewer-count">👥 <span id="viewerCount">0</span> watching</div>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="video-container">
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Loading stream...</p>
+            </div>
+            <iframe id="kickPlayer" allow="autoplay; fullscreen" allowfullscreen></iframe>
+        </div>
+
+        <div class="sidebar">
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab('chat')">💬 Chat</div>
+                <div class="tab" onclick="switchTab('viewers')">👥 Viewers</div>
+            </div>
+
+            <div id="chatTab" class="tab-content active">
+                <div class="chat-messages" id="chatMessages">
+                    <div class="chat-message">
+                        <span class="username" style="color: #9147ff;">System:</span>
+                        <span>Welcome to the watch party! 🎉</span>
+                    </div>
+                </div>
+                <div class="chat-input-container">
+                    <input type="text" id="usernameInput" class="username-input" placeholder="Enter your Discord username..." maxlength="32">
+                    <div class="chat-input-wrapper">
+                        <input type="text" id="chatInput" class="chat-input" placeholder="Type a message..." maxlength="500" disabled>
+                        <button id="sendButton" class="send-button" disabled>Send</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="viewersTab" class="tab-content">
+                <div class="viewers-list" id="viewersList">
+                    <p style="color: #adadb8; text-align: center; padding: 20px;">No viewers yet...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const partyId = window.location.pathname.split('/party/')[1];
+        const socket = io();
+        let currentUsername = '';
+        let partyInfo = null;
+
+        // DOM elements
+        const usernameInput = document.getElementById('usernameInput');
+        const chatInput = document.getElementById('chatInput');
+        const sendButton = document.getElementById('sendButton');
+        const chatMessages = document.getElementById('chatMessages');
+        const viewersList = document.getElementById('viewersList');
+        const viewerCountEl = document.getElementById('viewerCount');
+        const kickPlayer = document.getElementById('kickPlayer');
+        const loading = document.getElementById('loading');
+        const relayStatus = document.getElementById('relayStatus');
+        const twoWayStatus = document.getElementById('twoWayStatus');
+
+        // Auth elements
+        const authContainer = document.getElementById('authContainer');
+        const authStatus = document.getElementById('authStatus');
+        const authUsername = document.getElementById('authUsername');
+        const authAvatar = document.getElementById('authAvatar');
+        const loginBtn = document.getElementById('loginBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+
+        let csrfToken = null;
+
+        // Check authentication status
+        async function checkAuthStatus() {
+            try {
+                const response = await fetch('/auth/status');
+                if (!response.ok) {
+                    loginBtn.style.display = 'block';
+                    return;
+                }
+
+                const data = await response.json();
+                
+                if (data.authenticated && data.user) {
+                    // User is logged in
+                    authContainer.style.display = 'flex';
+                    authUsername.textContent = data.user.kickUsername;
+                    csrfToken = data.csrfToken;
+                    
+                    if (data.user.avatar) {
+                        authAvatar.src = data.user.avatar;
+                        authAvatar.style.display = 'block';
+                    }
+                    
+                    logoutBtn.style.display = 'block';
+                    
+                    // Auto-fill username if not set
+                    if (!currentUsername && usernameInput && data.user.kickUsername) {
+                        usernameInput.value = data.user.kickUsername;
+                        currentUsername = data.user.kickUsername;
+                        socket.emit('join-party', { partyId, username: currentUsername });
+                        chatInput.disabled = false;
+                        sendButton.disabled = false;
+                        usernameInput.disabled = true;
+                        addSystemMessage(`✅ Logged in as ${data.user.kickUsername}`);
+                    }
+                } else {
+                    // Not logged in
+                    loginBtn.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Auth check failed:', error);
+                loginBtn.style.display = 'block';
+            }
+        }
+
+        // Handle login
+        loginBtn.addEventListener('click', () => {
+            // Save return URL
+            window.location.href = `/auth/login?return=${encodeURIComponent(window.location.pathname)}`;
+        });
+
+        // Handle logout
+        logoutBtn.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/auth/logout', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfToken || ''
+                    }
+                });
+
+                if (response.ok) {
+                    addSystemMessage('👋 Logged out successfully');
+                    authContainer.style.display = 'none';
+                    loginBtn.style.display = 'block';
+                    
+                    // Disconnect from party
+                    if (currentUsername) {
+                        socket.disconnect();
+                        currentUsername = null;
+                        chatInput.disabled = true;
+                        sendButton.disabled = true;
+                        usernameInput.disabled = false;
+                        usernameInput.value = '';
+                    }
+                } else {
+                    alert('Logout failed. Please try again.');
+                }
+            } catch (error) {
+                console.error('Logout failed:', error);
+                alert('Logout failed. Please try again.');
+            }
+        });
+
+        // Check auth on page load
+        checkAuthStatus();
+
+        // Check for Discord token in URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const discordToken = urlParams.get('discord');
+        
+        if (discordToken) {
+            // Verify and auto-fill Discord username
+            fetch(`/api/verify-discord?token=${encodeURIComponent(discordToken)}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.valid && data.username) {
+                        usernameInput.value = data.username;
+                        currentUsername = data.username;
+                        socket.emit('join-party', { partyId, username: currentUsername });
+                        chatInput.disabled = false;
+                        sendButton.disabled = false;
+                        usernameInput.disabled = true;
+                        addSystemMessage(`✅ Welcome ${data.username}! (Verified from Discord)`);
+                        
+                        // Clean URL
+                        window.history.replaceState({}, document.title, window.location.pathname);
+                    }
+                })
+                .catch(err => {
+                    console.error('Discord token verification failed:', err);
+                });
+        }
+
+        // Check for auth success/error in URL
+        if (urlParams.get('auth') === 'success') {
+            setTimeout(() => {
+                checkAuthStatus();
+                // Clean URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }, 100);
+        } else if (urlParams.get('error')) {
+            addSystemMessage(`❌ Authentication error: ${urlParams.get('error')}`);
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+
+        // Load party info
+        fetch(`/api/party/${partyId}`)
+            .then(res => res.json())
+            .then(data => {
+                partyInfo = data;
+                document.title = `Watch Party - ${data.streamerName}`;
+                
+                // Load Kick player
+                kickPlayer.src = `https://player.kick.com/${data.streamerName}`;
+                loading.style.display = 'none';
+
+                // Display recent messages
+                data.recentMessages.forEach(msg => addMessageToChat(msg));
+                viewerCountEl.textContent = data.viewerCount;
+
+                // Show two-way chat status
+                if (data.twoWayChat && data.kickChatConnected) {
+                    twoWayStatus.style.display = 'block';
+                    twoWayStatus.style.background = '#9147ff';
+                    twoWayStatus.style.color = '#fff';
+                    addSystemMessage('🔄 Two-way chat ENABLED - you can see Kick chat messages here!');
+                }
+
+                // Show relay status
+                if (data.relayToKick) {
+                    relayStatus.style.display = 'block';
+                    relayStatus.style.background = '#53fc18';
+                    relayStatus.style.color = '#000';
+                    addSystemMessage('📤 Kick chat relay is ENABLED - your messages will appear in the streamer\'s Kick chat!');
+                }
+            })
+            .catch(err => {
+                console.error('Error loading party:', err);
+                loading.innerHTML = '<p style="color: #f00;">❌ Watch party not found</p>';
+            });
+
+        // Username input
+        usernameInput.addEventListener('input', (e) => {
+            const username = e.target.value.trim();
+            if (username && !currentUsername) {
+                currentUsername = username;
+                socket.emit('join-party', { partyId, username });
+                chatInput.disabled = false;
+                sendButton.disabled = false;
+                usernameInput.disabled = true;
+            }
+        });
+
+        // Chat input
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !sendButton.disabled) {
+                sendMessage();
+            }
+        });
+
+        sendButton.addEventListener('click', sendMessage);
+
+        function sendMessage() {
+            const message = chatInput.value.trim();
+            if (!message || !currentUsername) return;
+
+            socket.emit('send-message', {
+                partyId,
+                username: currentUsername,
+                message
+            });
+
+            chatInput.value = '';
+        }
+
+        // Socket events
+        socket.on('party-info', (data) => {
+            console.log('Joined party:', data);
+        });
+
+        socket.on('new-message', (msg) => {
+            addMessageToChat(msg);
+        });
+
+        socket.on('viewer-joined', (data) => {
+            viewerCountEl.textContent = data.viewerCount;
+            addSystemMessage(`${data.username} joined the watch party`);
+        });
+
+        socket.on('viewer-left', (data) => {
+            viewerCountEl.textContent = data.viewerCount;
+            addSystemMessage(`${data.username} left the watch party`);
+        });
+
+        socket.on('party-ended', () => {
+            addSystemMessage('Watch party has ended');
+            chatInput.disabled = true;
+            sendButton.disabled = true;
+        });
+
+        function addMessageToChat(msg) {
+            const messageEl = document.createElement('div');
+            messageEl.className = `chat-message ${msg.platform}`;
+            
+            const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            messageEl.innerHTML = `
+                <span class="username">${escapeHtml(msg.username)}:</span>
+                <span>${escapeHtml(msg.message)}</span>
+                <span class="timestamp">${time}</span>
+            `;
+            
+            chatMessages.appendChild(messageEl);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function addSystemMessage(text) {
+            const messageEl = document.createElement('div');
+            messageEl.className = 'chat-message';
+            messageEl.innerHTML = `
+                <span class="username" style="color: #9147ff;">System:</span>
+                <span>${escapeHtml(text)}</span>
+            `;
+            chatMessages.appendChild(messageEl);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            if (tab === 'chat') {
+                document.querySelector('.tab:nth-child(1)').classList.add('active');
+                document.getElementById('chatTab').classList.add('active');
+            } else {
+                document.querySelector('.tab:nth-child(2)').classList.add('active');
+                document.getElementById('viewersTab').classList.add('active');
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

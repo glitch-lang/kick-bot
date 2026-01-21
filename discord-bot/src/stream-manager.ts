@@ -268,14 +268,25 @@ export class StreamManager {
         .inputOptions([
           '-reconnect 1',
           '-reconnect_streamed 1',
-          '-reconnect_delay_max 5'
+          '-reconnect_delay_max 5',
+          '-fflags nobuffer',              // Reduce buffering
+          '-flags low_delay',              // Low latency mode
+          '-probesize 32',                 // Faster stream detection
+          '-analyzeduration 0',            // Skip analysis for faster start
+          '-thread_queue_size 512'         // Larger thread queue
         ])
         .audioCodec('libopus')
         .audioFrequency(48000)
         .audioChannels(2)
+        .audioBitrate('128k')              // Explicit bitrate
         .format('opus')
+        .outputOptions([
+          '-application lowdelay',         // Opus low delay mode
+          '-frame_duration 20',            // Smaller frame size
+          '-packet_loss 15'                // Handle packet loss
+        ])
         .on('start', (cmd) => {
-          console.log('🎵 FFmpeg started:', cmd);
+          console.log('🎵 FFmpeg started (low latency mode):', cmd);
         })
         .on('error', (err) => {
           console.error('❌ FFmpeg error:', err);
