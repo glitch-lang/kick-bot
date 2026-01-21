@@ -392,19 +392,25 @@
             </div>
 
             <div id="kickchatTab" class="tab-content">
-                <div class="kick-chat-container" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center;">
-                    <div style="font-size: 48px; margin-bottom: 20px;">💬</div>
-                    <h3 style="color: #53fc18; margin-bottom: 15px;">Kick Chat</h3>
-                    <p style="color: #adadb8; margin-bottom: 20px; max-width: 400px;">
-                        Kick doesn't allow chat embedding for security reasons.
-                    </p>
-                    <a id="kickChatLink" href="#" target="_blank" rel="noopener noreferrer" 
-                       style="background: #53fc18; color: #000; padding: 12px 24px; border-radius: 5px; text-decoration: none; font-weight: bold; display: inline-block;">
-                        🟢 Open Kick Chat in New Tab
-                    </a>
-                    <p style="color: #666; margin-top: 15px; font-size: 14px;">
-                        Use Party Chat below to chat with other watch party viewers!
-                    </p>
+                <div class="kick-chat-container">
+                    <div id="kickChatLoading" style="display: flex; align-items: center; justify-content: center; height: 100%; color: #adadb8;">
+                        <div>Loading Kick chat...</div>
+                    </div>
+                    <iframe id="kickChatIframe" class="kick-chat-iframe" src="" allowfullscreen style="display: none;"></iframe>
+                    <div id="kickChatError" style="display: none; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; height: 100%;">
+                        <div style="font-size: 48px; margin-bottom: 20px;">💬</div>
+                        <h3 style="color: #53fc18; margin-bottom: 15px;">Kick Chat</h3>
+                        <p style="color: #adadb8; margin-bottom: 20px; max-width: 400px;">
+                            Kick chat couldn't be embedded.
+                        </p>
+                        <a id="kickChatLink" href="#" target="_blank" rel="noopener noreferrer" 
+                           style="background: #53fc18; color: #000; padding: 12px 24px; border-radius: 5px; text-decoration: none; font-weight: bold; display: inline-block;">
+                            🟢 Open Kick Chat in New Tab
+                        </a>
+                        <p style="color: #666; margin-top: 15px; font-size: 14px;">
+                            Use Party Chat below to chat with other watch party viewers!
+                        </p>
+                    </div>
                 </div>
             </div>
 
@@ -631,12 +637,66 @@
                 kickPlayer.src = playerUrl;
                 loading.style.display = 'none';
 
-                // Set Kick chat link (Kick blocks iframe embedding)
+                // Try loading Kick chat iframe with fallback
+                const kickChatIframe = document.getElementById('kickChatIframe');
+                const kickChatLoading = document.getElementById('kickChatLoading');
+                const kickChatError = document.getElementById('kickChatError');
                 const kickChatLink = document.getElementById('kickChatLink');
-                if (kickChatLink) {
-                    kickChatLink.href = `https://kick.com/${data.streamerName}`;
-                    console.log('✅ Kick chat link set:', kickChatLink.href);
-                }
+                
+                // Try multiple Kick chat URLs
+                const chatUrls = [
+                    `https://kick.com/${data.streamerName}/chatroom`,
+                    `https://www.kick.com/${data.streamerName}/chatroom`,
+                    `https://kick.com/${data.streamerName}`
+                ];
+                
+                let currentUrlIndex = 0;
+                
+                const tryLoadChat = () => {
+                    if (currentUrlIndex >= chatUrls.length) {
+                        console.warn('❌ All Kick chat URLs failed, showing fallback link');
+                        kickChatLoading.style.display = 'none';
+                        kickChatError.style.display = 'flex';
+                        kickChatLink.href = `https://kick.com/${data.streamerName}`;
+                        return;
+                    }
+                    
+                    const chatUrl = chatUrls[currentUrlIndex];
+                    console.log(`Attempting Kick chat URL [${currentUrlIndex + 1}/${chatUrls.length}]:`, chatUrl);
+                    
+                    kickChatIframe.src = chatUrl;
+                    
+                    // Success: show iframe
+                    const onLoad = () => {
+                        console.log('✅ Kick chat loaded successfully:', chatUrl);
+                        kickChatLoading.style.display = 'none';
+                        kickChatIframe.style.display = 'block';
+                        kickChatIframe.removeEventListener('load', onLoad);
+                        kickChatIframe.removeEventListener('error', onError);
+                    };
+                    
+                    // Error: try next URL
+                    const onError = () => {
+                        console.warn('⚠️ Failed to load:', chatUrl);
+                        kickChatIframe.removeEventListener('load', onLoad);
+                        kickChatIframe.removeEventListener('error', onError);
+                        currentUrlIndex++;
+                        setTimeout(tryLoadChat, 500);
+                    };
+                    
+                    kickChatIframe.addEventListener('load', onLoad);
+                    kickChatIframe.addEventListener('error', onError);
+                    
+                    // Timeout fallback after 5 seconds
+                    setTimeout(() => {
+                        if (kickChatIframe.style.display === 'none' && kickChatError.style.display === 'none') {
+                            console.warn('⏱️ Timeout loading:', chatUrl);
+                            onError();
+                        }
+                    }, 5000);
+                };
+                
+                tryLoadChat();
 
                 // Display recent messages
                 data.recentMessages.forEach(msg => addMessageToChat(msg));
