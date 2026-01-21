@@ -16,7 +16,11 @@ interface WatchParty {
   relayToKick: boolean;
   twoWayChat: boolean;
   kickChatListener?: KickChatListener;
-  viewers: Map<string, { username: string, joinedAt: Date }>;
+  viewers: Map<string, { 
+    username: string;
+    joinedAt: Date;
+    discordId?: string; // Store Discord ID for points tracking
+  }>;
   chatMessages: Array<{
     username: string;
     message: string;
@@ -167,8 +171,8 @@ export class WatchPartyServer {
       console.log('🔌 User connected to watch party');
 
       // Join watch party
-      socket.on('join-party', (data: { partyId: string, username: string }) => {
-        const { partyId, username } = data;
+      socket.on('join-party', async (data: { partyId: string, username: string, discordId?: string }) => {
+        const { partyId, username, discordId } = data;
         const party = this.watchParties.get(partyId);
 
         if (!party) {
@@ -177,9 +181,24 @@ export class WatchPartyServer {
         }
 
         socket.join(partyId);
-        party.viewers.set(socket.id, { username, joinedAt: new Date() });
+        const joinedAt = new Date();
+        party.viewers.set(socket.id, { username, joinedAt, discordId });
 
-        console.log(`👤 ${username} joined watch party: ${party.streamerName}`);
+        // Log Discord user joining for points tracking
+        if (discordId) {
+          console.log(`👤 ${username} (Discord: ${discordId}) joined watch party: ${party.streamerName} 🎮`);
+          
+          // Save viewing session to database for future points calculation
+          if (this.db) {
+            try {
+              await this.db.saveViewingSession(partyId, discordId, username, party.streamerName, joinedAt);
+            } catch (error) {
+              console.error('Failed to save viewing session:', error);
+            }
+          }
+        } else {
+          console.log(`👤 ${username} joined watch party: ${party.streamerName}`);
+        }
 
         // Send party info to user
         socket.emit('party-info', {
@@ -225,18 +244,32 @@ export class WatchPartyServer {
       });
 
       // User disconnect
-      socket.on('disconnect', () => {
+      socket.on('disconnect', async () => {
         for (const [partyId, party] of this.watchParties.entries()) {
           if (party.viewers.has(socket.id)) {
             const viewer = party.viewers.get(socket.id);
+            
+            // Update viewing session end time for points tracking
+            if (viewer?.discordId && this.db) {
+              const leftAt = new Date();
+              const watchTimeMinutes = Math.floor((leftAt.getTime() - viewer.joinedAt.getTime()) / 60000);
+              
+              try {
+                await this.db.endViewingSession(partyId, viewer.discordId, leftAt);
+                console.log(`👋 ${viewer.username} (Discord: ${viewer.discordId}) left watch party after ${watchTimeMinutes} minutes 🎮`);
+              } catch (error) {
+                console.error('Failed to end viewing session:', error);
+              }
+            } else if (viewer) {
+              console.log(`👋 ${viewer.username} left watch party`);
+            }
+            
             party.viewers.delete(socket.id);
 
             this.io.to(partyId).emit('viewer-left', {
               username: viewer?.username,
               viewerCount: party.viewers.size
             });
-
-            console.log(`👋 ${viewer?.username} left watch party`);
           }
         }
       });

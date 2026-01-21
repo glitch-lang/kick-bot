@@ -524,6 +524,8 @@
         const urlParams = new URLSearchParams(window.location.search);
         const discordToken = urlParams.get('discord');
         
+        let currentDiscordId = null; // Store Discord ID for points tracking
+        
         if (discordToken) {
             // Verify and auto-fill Discord username
             fetch(`/api/verify-discord?token=${encodeURIComponent(discordToken)}`)
@@ -532,11 +534,19 @@
                     if (data.valid && data.username) {
                         usernameInput.value = data.username;
                         currentUsername = data.username;
-                        socket.emit('join-party', { partyId, username: currentUsername });
+                        currentDiscordId = data.id; // Store Discord ID for points
+                        
+                        // Join party WITH Discord ID for points tracking
+                        socket.emit('join-party', { 
+                            partyId, 
+                            username: currentUsername,
+                            discordId: currentDiscordId // ✅ Send Discord ID for points
+                        });
+                        
                         chatInput.disabled = false;
                         sendButton.disabled = false;
                         usernameInput.disabled = true;
-                        addSystemMessage(`✅ Welcome ${data.username}! (Verified from Discord)`);
+                        addSystemMessage(`✅ Welcome ${data.username}! (Verified from Discord) 🎮 Points tracking enabled!`);
                         
                         // Clean URL
                         window.history.replaceState({}, document.title, window.location.pathname);

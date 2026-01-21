@@ -252,6 +252,21 @@ export class Database {
       )
     `);
     
+    // Viewing sessions for points tracking
+    await this.runQuery(`
+      CREATE TABLE IF NOT EXISTS viewing_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        party_id TEXT NOT NULL,
+        discord_user_id TEXT NOT NULL,
+        username TEXT NOT NULL,
+        streamer_name TEXT NOT NULL,
+        joined_at DATETIME NOT NULL,
+        left_at DATETIME,
+        watch_time_minutes INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
     // Run migrations
     await this.runMigrations();
     
@@ -562,5 +577,70 @@ export class Database {
       'SELECT kick_user_id, email, avatar FROM kick_profiles WHERE username = ?',
       [username.toLowerCase()]
     );
+  }
+
+  // Viewing Sessions for Points Tracking
+  async saveViewingSession(partyId: string, discordUserId: string, username: string, streamerName: string, joinedAt: Date): Promise<void> {
+    await this.runQuery(
+      `INSERT INTO viewing_sessions (party_id, discord_user_id, username, streamer_name, joined_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      [partyId, discordUserId, username, streamerName, joinedAt.toISOString()]
+    );
+    console.log(`💾 Saved viewing session for ${username} (${discordUserId}) watching ${streamerName}`);
+  }
+
+  async endViewingSession(partyId: string, discordUserId: string, leftAt: Date): Promise<void> {
+    // Find the most recent session without a left_at time
+    const session: any = await this.getQuery(
+      `SELECT id, joined_at FROM viewing_sessions 
+       WHERE party_id = ? AND discord_user_id = ? AND left_at IS NULL 
+       ORDER BY joined_at DESC LIMIT 1`,
+      [partyId, discordUserId]
+    );
+
+    if (session) {
+      const watchTimeMinutes = Math.floor((leftAt.getTime() - new Date(session.joined_at).getTime()) / 60000);
+      
+      await this.runQuery(
+        `UPDATE viewing_sessions 
+         SET left_at = ?, watch_time_minutes = ? 
+         WHERE id = ?`,
+        [leftAt.toISOString(), watchTimeMinutes, session.id]
+      );
+      
+      console.log(`💾 Updated viewing session: ${watchTimeMinutes} minutes watched`);
+    }
+  }
+
+  async getUserWatchTime(discordUserId: string): Promise<{ totalMinutes: number, sessions: number }> {
+    const result: any = await this.getQuery(
+      `SELECT 
+        COALESCE(SUM(watch_time_minutes), 0) as totalMinutes,
+        COUNT(*) as sessions
+       FROM viewing_sessions 
+       WHERE discord_user_id = ? AND left_at IS NOT NULL`,
+      [discordUserId]
+    );
+    
+    return {
+      totalMinutes: result?.totalMinutes || 0,
+      sessions: result?.sessions || 0
+    };
+  }
+
+  async getStreamerWatchTime(streamerName: string): Promise<{ totalMinutes: number, uniqueViewers: number }> {
+    const result: any = await this.getQuery(
+      `SELECT 
+        COALESCE(SUM(watch_time_minutes), 0) as totalMinutes,
+        COUNT(DISTINCT discord_user_id) as uniqueViewers
+       FROM viewing_sessions 
+       WHERE streamer_name = ? AND left_at IS NOT NULL`,
+      [streamerName.toLowerCase()]
+    );
+    
+    return {
+      totalMinutes: result?.totalMinutes || 0,
+      uniqueViewers: result?.uniqueViewers || 0
+    };
   }
 }
