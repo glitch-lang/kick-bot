@@ -96,23 +96,36 @@ export class WatchPartyServer {
     this.app.get('/api/verify-discord', (req, res) => {
       const token = req.query.token as string;
       
+      console.log('🔍 Discord verification request received');
+      console.log('Token present:', !!token);
+      console.log('discordAuthManager present:', !!this.discordAuthManager);
+      
       if (!token) {
-        return res.json({ valid: false });
+        console.log('❌ No token provided');
+        return res.json({ valid: false, error: 'No token provided' });
       }
 
       if (!this.discordAuthManager) {
-        return res.json({ valid: false });
+        console.log('❌ No discordAuthManager configured');
+        return res.json({ valid: false, error: 'Auth manager not configured' });
       }
 
-      const decoded = this.discordAuthManager.verifyDiscordToken(token);
-      if (decoded) {
-        res.json({
-          valid: true,
-          username: decoded.username,
-          id: decoded.id
-        });
-      } else {
-        res.json({ valid: false });
+      try {
+        const decoded = this.discordAuthManager.verifyDiscordToken(token);
+        if (decoded) {
+          console.log('✅ Token verified:', decoded.username, 'ID:', decoded.id);
+          res.json({
+            valid: true,
+            username: decoded.username,
+            id: decoded.id
+          });
+        } else {
+          console.log('❌ Token verification failed - invalid or expired');
+          res.json({ valid: false, error: 'Invalid or expired token' });
+        }
+      } catch (error) {
+        console.error('❌ Token verification error:', error);
+        res.json({ valid: false, error: 'Verification error' });
       }
     });
 
