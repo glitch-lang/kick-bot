@@ -60,7 +60,7 @@ export class OAuthRouter {
           styleSrc: ["'self'", "'unsafe-inline'"],
           imgSrc: ["'self'", "data:", "https:"],
           connectSrc: ["'self'", "wss:", "https:"],
-          frameSrc: ["https://player.kick.com"],
+          frameSrc: ["https://player.kick.com", "https://kick.com"],
           fontSrc: ["'self'", "data:"],
         },
       },
