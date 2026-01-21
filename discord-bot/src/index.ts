@@ -20,7 +20,9 @@ const client = new Client({
   ],
 });
 
+// Initialize database
 const db = new Database();
+
 const KICK_API_URL = process.env.KICK_BOT_API_URL || 'https://web-production-56232.up.railway.app';
 let PUBLIC_URL = process.env.PUBLIC_URL || 'http://localhost:3001';
 const ENABLE_TUNNEL = process.env.ENABLE_TUNNEL === 'true' || false;
@@ -1172,4 +1174,17 @@ export async function handleKickResponse(data: any) {
   }
 }
 
-client.login(process.env.DISCORD_BOT_TOKEN);
+// Start the bot after database is ready
+async function startBot() {
+  try {
+    console.log('⏳ Waiting for database to be ready...');
+    await db.waitForReady();
+    console.log('✅ Database ready, starting bot...');
+    await client.login(process.env.DISCORD_BOT_TOKEN);
+  } catch (error) {
+    console.error('❌ Failed to start bot:', error);
+    process.exit(1);
+  }
+}
+
+startBot();

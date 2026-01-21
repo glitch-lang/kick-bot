@@ -3,7 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 export class Database {
-  private db: sqlite3.Database;
+  private db!: sqlite3.Database; // ! tells TypeScript it will be assigned
+  private ready: Promise<void>;
 
   constructor() {
     // Use environment variable for DB path, or Railway's temp directory, or local data folder
@@ -49,20 +50,31 @@ export class Database {
     
     console.log(`📂 Using database path: ${dbPath}`);
     
-    // Open database and wait for it to be ready before initializing
-    this.db = new sqlite3.Database(dbPath, (err) => {
-      if (err) {
-        console.error(`❌ CRITICAL: Failed to open database at ${dbPath}:`, err);
-        process.exit(1); // Exit if database can't be opened
-      }
-      console.log(`✅ Database opened successfully at ${dbPath}`);
-      
-      // Initialize tables after database is ready
-      this.init().catch((error) => {
-        console.error(`❌ CRITICAL: Database initialization failed:`, error);
-        process.exit(1);
+    // Create a promise that resolves when database is ready
+    this.ready = new Promise((resolve, reject) => {
+      this.db = new sqlite3.Database(dbPath, async (err) => {
+        if (err) {
+          console.error(`❌ CRITICAL: Failed to open database at ${dbPath}:`, err);
+          reject(err);
+          return;
+        }
+        console.log(`✅ Database opened successfully at ${dbPath}`);
+        
+        try {
+          await this.init();
+          console.log(`✅ Database is ready for use`);
+          resolve();
+        } catch (error) {
+          console.error(`❌ CRITICAL: Database initialization failed:`, error);
+          reject(error);
+        }
       });
     });
+  }
+
+  // Method to wait for database to be ready
+  async waitForReady(): Promise<void> {
+    return this.ready;
   }
 
   private runQuery(sql: string, params: any[] = []): Promise<void> {
