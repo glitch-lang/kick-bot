@@ -325,6 +325,103 @@
             position: relative;
         }
 
+        .layout-toggle-btn, .layout-btn {
+            background: #1f1f23;
+            color: #efeff1;
+            border: 1px solid #2d2d30;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .layout-toggle-btn:hover, .layout-btn:hover {
+            background: #2d2d30;
+            transform: translateY(-1px);
+        }
+
+        .layout-toggle-btn.active {
+            background: #53fc18;
+            color: #000;
+            border-color: #53fc18;
+        }
+
+        .layout-help {
+            background: #0e0e10;
+            border-bottom: 2px solid #53fc18;
+        }
+
+        .draggable-panel {
+            position: relative;
+            transition: opacity 0.2s;
+        }
+
+        .draggable-panel.dragging {
+            opacity: 0.5;
+            cursor: move !important;
+        }
+
+        .draggable-panel.edit-mode {
+            outline: 2px dashed #53fc18;
+            outline-offset: -2px;
+            cursor: move;
+        }
+
+        .draggable-panel.edit-mode::after {
+            content: '⋮⋮';
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 20px;
+            color: #53fc18;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 5px 10px;
+            border-radius: 5px;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        .drop-zone {
+            position: relative;
+        }
+
+        .drop-zone.drag-over::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: rgba(83, 252, 24, 0.2);
+            border: 3px dashed #53fc18;
+            z-index: 999;
+            pointer-events: none;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+
+        .panel-label {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #53fc18;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            font-weight: bold;
+            z-index: 1000;
+            display: none;
+            pointer-events: none;
+        }
+
+        .edit-mode .panel-label {
+            display: block;
+        }
+
         @media (max-width: 768px) {
             .main-container {
                 flex-direction: column;
@@ -341,6 +438,9 @@
     <div class="header">
         <h1>🎬 Watch Party</h1>
         <div class="header-right">
+            <button id="layoutToggle" class="layout-toggle-btn" title="Customize Layout">
+                🔧 Layout
+            </button>
             <div id="twoWayStatus" style="background: #333; padding: 5px 15px; border-radius: 15px; font-size: 12px; display: none;">
                 🔄 Two-Way Chat
             </div>
@@ -358,9 +458,20 @@
             <div class="viewer-count">👥 <span id="viewerCount">0</span> watching</div>
         </div>
     </div>
+    
+    <div id="layoutHelp" class="layout-help" style="display: none;">
+        <div style="background: #53fc18; color: #000; padding: 10px 20px; font-weight: bold; text-align: center;">
+            🎨 Layout Edit Mode: Drag panels to rearrange them!
+        </div>
+        <div style="padding: 10px 20px; display: flex; gap: 10px; justify-content: center; align-items: center;">
+            <button id="resetLayout" class="layout-btn">↺ Reset to Default</button>
+            <button id="saveLayout" class="layout-btn" style="background: #53fc18; color: #000;">✓ Done Editing</button>
+        </div>
+    </div>
 
-    <div class="main-container">
-        <div class="video-container">
+    <div class="main-container" id="mainContainer">
+        <div class="video-container draggable-panel drop-zone" id="videoPanel" data-panel="video" draggable="false">
+            <div class="panel-label">📺 Video Player</div>
             <div class="loading" id="loading">
                 <div class="spinner"></div>
                 <p>Loading stream...</p>
@@ -368,7 +479,8 @@
             <iframe id="kickPlayer" allow="autoplay; fullscreen" allowfullscreen></iframe>
         </div>
 
-        <div class="sidebar">
+        <div class="sidebar draggable-panel drop-zone" id="sidebarPanel" data-panel="sidebar" draggable="false">
+            <div class="panel-label">💬 Chat & Tabs</div>
             <div class="tabs">
                 <div class="tab active" data-tab="chat">💬 Party Chat</div>
                 <div class="tab" data-tab="kickchat">🟢 Kick Chat</div>
@@ -918,6 +1030,187 @@
             div.textContent = text;
             return div.innerHTML;
         }
+
+        // ===== GRID-BASED DRAGGABLE LAYOUT SYSTEM =====
+        let isLayoutEditMode = false;
+        let draggedPanel = null;
+
+        const layoutToggle = document.getElementById('layoutToggle');
+        const layoutHelp = document.getElementById('layoutHelp');
+        const resetLayout = document.getElementById('resetLayout');
+        const saveLayout = document.getElementById('saveLayout');
+        const mainContainer = document.getElementById('mainContainer');
+        const videoPanel = document.getElementById('videoPanel');
+        const sidebarPanel = document.getElementById('sidebarPanel');
+
+        // Toggle layout edit mode
+        layoutToggle.addEventListener('click', () => {
+            isLayoutEditMode = !isLayoutEditMode;
+            toggleLayoutEditMode();
+        });
+
+        function toggleLayoutEditMode() {
+            if (isLayoutEditMode) {
+                // Enable edit mode
+                layoutToggle.classList.add('active');
+                layoutHelp.style.display = 'block';
+                videoPanel.classList.add('edit-mode');
+                sidebarPanel.classList.add('edit-mode');
+                videoPanel.setAttribute('draggable', 'true');
+                sidebarPanel.setAttribute('draggable', 'true');
+                console.log('🔧 Layout edit mode ENABLED');
+            } else {
+                // Disable edit mode
+                layoutToggle.classList.remove('active');
+                layoutHelp.style.display = 'none';
+                videoPanel.classList.remove('edit-mode');
+                sidebarPanel.classList.remove('edit-mode');
+                videoPanel.setAttribute('draggable', 'false');
+                sidebarPanel.setAttribute('draggable', 'false');
+                console.log('✓ Layout edit mode DISABLED');
+            }
+        }
+
+        // Drag event handlers
+        videoPanel.addEventListener('dragstart', handleDragStart);
+        sidebarPanel.addEventListener('dragstart', handleDragStart);
+
+        videoPanel.addEventListener('dragover', handleDragOver);
+        sidebarPanel.addEventListener('dragover', handleDragOver);
+
+        videoPanel.addEventListener('drop', handleDrop);
+        sidebarPanel.addEventListener('drop', handleDrop);
+
+        videoPanel.addEventListener('dragenter', handleDragEnter);
+        sidebarPanel.addEventListener('dragenter', handleDragEnter);
+
+        videoPanel.addEventListener('dragleave', handleDragLeave);
+        sidebarPanel.addEventListener('dragleave', handleDragLeave);
+
+        videoPanel.addEventListener('dragend', handleDragEnd);
+        sidebarPanel.addEventListener('dragend', handleDragEnd);
+
+        function handleDragStart(e) {
+            if (!isLayoutEditMode) return;
+            draggedPanel = e.currentTarget;
+            e.currentTarget.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/html', e.currentTarget.innerHTML);
+            console.log('🎯 Started dragging:', e.currentTarget.dataset.panel);
+        }
+
+        function handleDragOver(e) {
+            if (!isLayoutEditMode) return;
+            if (e.preventDefault) e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            return false;
+        }
+
+        function handleDragEnter(e) {
+            if (!isLayoutEditMode || e.currentTarget === draggedPanel) return;
+            e.currentTarget.classList.add('drag-over');
+        }
+
+        function handleDragLeave(e) {
+            if (!isLayoutEditMode) return;
+            e.currentTarget.classList.remove('drag-over');
+        }
+
+        function handleDrop(e) {
+            if (!isLayoutEditMode) return;
+            if (e.stopPropagation) e.stopPropagation();
+            e.currentTarget.classList.remove('drag-over');
+
+            const dropTarget = e.currentTarget;
+            
+            if (draggedPanel && dropTarget !== draggedPanel) {
+                // Swap the panels in the DOM
+                swapPanels(draggedPanel, dropTarget);
+                console.log('✅ Swapped panels:', draggedPanel.dataset.panel, '<->', dropTarget.dataset.panel);
+                
+                // Save layout
+                saveLayoutToStorage();
+            }
+
+            return false;
+        }
+
+        function handleDragEnd(e) {
+            if (!isLayoutEditMode) return;
+            e.currentTarget.classList.remove('dragging');
+            
+            // Remove drag-over class from all panels
+            videoPanel.classList.remove('drag-over');
+            sidebarPanel.classList.remove('drag-over');
+            
+            draggedPanel = null;
+        }
+
+        function swapPanels(panel1, panel2) {
+            // Get the parent container
+            const parent = panel1.parentNode;
+            
+            // Get the next sibling of panel2
+            const panel2Next = panel2.nextSibling;
+            
+            // Insert panel1 before panel2's next sibling
+            if (panel2Next) {
+                parent.insertBefore(panel1, panel2Next);
+            } else {
+                parent.appendChild(panel1);
+            }
+            
+            // Insert panel2 before panel1's original position
+            parent.insertBefore(panel2, panel1);
+        }
+
+        function saveLayoutToStorage() {
+            const layout = {
+                order: Array.from(mainContainer.children).map(child => child.dataset.panel)
+            };
+            localStorage.setItem('watchPartyLayout', JSON.stringify(layout));
+            console.log('💾 Saved layout:', layout);
+        }
+
+        function loadLayoutFromStorage() {
+            const saved = localStorage.getItem('watchPartyLayout');
+            if (!saved) return;
+            
+            try {
+                const layout = JSON.parse(saved);
+                console.log('📂 Loading saved layout:', layout);
+                
+                // Reorder panels based on saved layout
+                layout.order.forEach((panelName, index) => {
+                    const panel = document.querySelector(`[data-panel="${panelName}"]`);
+                    if (panel) {
+                        mainContainer.appendChild(panel);
+                    }
+                });
+            } catch (e) {
+                console.error('Failed to load layout:', e);
+            }
+        }
+
+        // Reset layout button
+        resetLayout.addEventListener('click', () => {
+            // Reset to default order: video first, sidebar second
+            mainContainer.appendChild(videoPanel);
+            mainContainer.appendChild(sidebarPanel);
+            saveLayoutToStorage();
+            console.log('↺ Reset to default layout');
+        });
+
+        // Save/Done button
+        saveLayout.addEventListener('click', () => {
+            isLayoutEditMode = false;
+            toggleLayoutEditMode();
+        });
+
+        // Load saved layout on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadLayoutFromStorage();
+        });
     </script>
 </body>
 </html>
