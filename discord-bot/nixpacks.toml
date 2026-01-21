@@ -1,6 +1,6 @@
 [phases.setup]
 nixPkgs = ["nodejs_20", "python3"]
-# Note: Chromium removed to speed up builds. Puppeteer features will be disabled.
+# Optimized for Railway: Removed Chromium to speed up builds
 
 [phases.install]
 cmds = ["npm install"]
