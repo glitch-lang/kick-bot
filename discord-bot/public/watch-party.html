@@ -396,8 +396,8 @@
                     <div style="font-size: 64px; margin-bottom: 20px;">💬</div>
                     <h2 style="color: #53fc18; margin-bottom: 15px;">Kick Chat Popup</h2>
                     <p style="color: #adadb8; margin-bottom: 30px; max-width: 500px; line-height: 1.6;">
-                        Click below to open Kick chat in a popup window positioned at this location.
-                        You can log in and chat directly with the streamer!
+                        Click below to open Kick chat in a popup window positioned to the right.
+                        You can log in and chat directly with the streamer while still accessing Party Chat!
                     </p>
                     <button id="openKickChatPopup" 
                             style="background: #53fc18; color: #000; padding: 15px 30px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-bottom: 20px; transition: transform 0.2s;">
@@ -651,15 +651,13 @@
                         return;
                     }
                     
-                    // Get the position and size of the tab content area
-                    const tabContent = document.getElementById('kickchatTab');
-                    const rect = tabContent.getBoundingClientRect();
+                    // Calculate popup position (to the RIGHT of the watch party)
+                    const popupWidth = 380;
+                    const popupHeight = Math.min(700, window.innerHeight - 100); // Fit screen height
                     
-                    // Calculate popup position (aligned with tab content)
-                    const popupWidth = 400;
-                    const popupHeight = 600;
-                    const left = window.screenX + rect.left;
-                    const top = window.screenY + rect.top + 60; // Offset for browser chrome
+                    // Position to the right of the current window
+                    const left = window.screenX + window.outerWidth + 10; // 10px gap
+                    const top = window.screenY + 80; // Align with top of content
                     
                     // Open Kick popout chat in a positioned popup
                     const kickChatUrl = `https://kick.com/popout/${data.streamerName}/chat`;
