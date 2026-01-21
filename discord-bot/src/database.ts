@@ -52,7 +52,7 @@ export class Database {
     
     // Create a promise that resolves when database is ready
     this.ready = new Promise((resolve, reject) => {
-      this.db = new sqlite3.Database(dbPath, async (err) => {
+      this.db = new sqlite3.Database(dbPath, (err) => {
         if (err) {
           console.error(`❌ CRITICAL: Failed to open database at ${dbPath}:`, err);
           reject(err);
@@ -60,14 +60,16 @@ export class Database {
         }
         console.log(`✅ Database opened successfully at ${dbPath}`);
         
-        try {
-          await this.init();
-          console.log(`✅ Database is ready for use`);
-          resolve();
-        } catch (error) {
-          console.error(`❌ CRITICAL: Database initialization failed:`, error);
-          reject(error);
-        }
+        // Initialize tables after connection is established
+        this.init()
+          .then(() => {
+            console.log(`✅ Database is ready for use`);
+            resolve();
+          })
+          .catch((error) => {
+            console.error(`❌ CRITICAL: Database initialization failed:`, error);
+            reject(error);
+          });
       });
     });
   }

@@ -38,23 +38,8 @@ const browserStreamManager = new BrowserStreamManager();
 // Use Railway's dynamic port or default to 3001 for local
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
-// Initialize Watch Party Server with optional OAuth
+// Declare Watch Party Server (will be initialized after database is ready)
 let watchPartyServer: WatchPartyServer;
-if (process.env.KICK_OAUTH_CLIENT_ID && process.env.KICK_OAUTH_CLIENT_SECRET && 
-    process.env.SESSION_SECRET && process.env.ENCRYPTION_KEY) {
-  // OAuth enabled
-  watchPartyServer = new WatchPartyServer(PORT, KICK_API_URL, db, {
-    clientId: process.env.KICK_OAUTH_CLIENT_ID,
-    clientSecret: process.env.KICK_OAUTH_CLIENT_SECRET,
-    redirectUri: process.env.KICK_OAUTH_REDIRECT_URI || `${PUBLIC_URL}/auth/callback`,
-    sessionSecret: process.env.SESSION_SECRET,
-    encryptionKey: process.env.ENCRYPTION_KEY
-  }, discordAuthManager);
-} else {
-  // OAuth disabled
-  watchPartyServer = new WatchPartyServer(PORT, KICK_API_URL, undefined, undefined, discordAuthManager);
-  console.log('ℹ️  OAuth login disabled (set KICK_OAUTH_* env vars to enable)');
-}
 
 // Start LocalTunnel if enabled
 async function startTunnel() {
@@ -1179,7 +1164,26 @@ async function startBot() {
   try {
     console.log('⏳ Waiting for database to be ready...');
     await db.waitForReady();
-    console.log('✅ Database ready, starting bot...');
+    console.log('✅ Database ready, initializing services...');
+    
+    // Initialize Watch Party Server AFTER database is ready
+    if (process.env.KICK_OAUTH_CLIENT_ID && process.env.KICK_OAUTH_CLIENT_SECRET && 
+        process.env.SESSION_SECRET && process.env.ENCRYPTION_KEY) {
+      // OAuth enabled
+      watchPartyServer = new WatchPartyServer(PORT, KICK_API_URL, db, {
+        clientId: process.env.KICK_OAUTH_CLIENT_ID,
+        clientSecret: process.env.KICK_OAUTH_CLIENT_SECRET,
+        redirectUri: process.env.KICK_OAUTH_REDIRECT_URI || `${PUBLIC_URL}/auth/callback`,
+        sessionSecret: process.env.SESSION_SECRET,
+        encryptionKey: process.env.ENCRYPTION_KEY
+      }, discordAuthManager);
+    } else {
+      // OAuth disabled
+      watchPartyServer = new WatchPartyServer(PORT, KICK_API_URL, undefined, undefined, discordAuthManager);
+      console.log('ℹ️  OAuth login disabled (set KICK_OAUTH_* env vars to enable)');
+    }
+    
+    console.log('✅ Watch Party server initialized');
     await client.login(process.env.DISCORD_BOT_TOKEN);
   } catch (error) {
     console.error('❌ Failed to start bot:', error);
