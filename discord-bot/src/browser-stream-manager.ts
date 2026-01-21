@@ -88,7 +88,7 @@ export class BrowserStreamManager {
       console.log('📡 Setting up network monitoring...');
       const m3u8Urls: string[] = [];
       
-      page.on('response', async (response) => {
+      page.on('response', async (response: any) => {
         const url = response.url();
         if (url.includes('.m3u8')) {
           console.log(`📡 Captured m3u8: ${url.substring(0, 80)}...`);
@@ -241,7 +241,7 @@ export class BrowserStreamManager {
       const m3u8Urls: string[] = [];
       
       // Set up network listener BEFORE navigation
-      page.on('response', async (response) => {
+      page.on('response', async (response: any) => {
         const url = response.url();
         if (url.includes('.m3u8')) {
           console.log(`📡 Captured m3u8 URL: ${url.substring(0, 100)}...`);
@@ -319,7 +319,7 @@ export class BrowserStreamManager {
         
         const apiUrl = `https://kick.com/api/v2/channels/${channelName}/livestream`;
         try {
-          const apiResponse = await page.evaluate(async (url) => {
+          const apiResponse = await page.evaluate(async (url: string) => {
             const response = await fetch(url);
             const data: any = await response.json();
             return data?.playback_url || null;
