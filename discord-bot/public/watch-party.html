@@ -360,27 +360,50 @@
 
         .draggable-panel.dragging {
             opacity: 0.5;
-            cursor: move !important;
         }
 
         .draggable-panel.edit-mode {
-            outline: 2px dashed #53fc18;
-            outline-offset: -2px;
-            cursor: move;
+            outline: 3px dashed #53fc18;
+            outline-offset: -3px;
         }
 
-        .draggable-panel.edit-mode::after {
-            content: '⋮⋮';
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            font-size: 20px;
-            color: #53fc18;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 5px 10px;
-            border-radius: 5px;
+        /* Prevent iframes from capturing mouse events during edit mode */
+        .edit-mode iframe {
             pointer-events: none;
-            z-index: 1000;
+        }
+
+        /* Drag handle that appears in edit mode */
+        .drag-handle {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: linear-gradient(180deg, rgba(83, 252, 24, 0.3) 0%, rgba(83, 252, 24, 0) 100%);
+            cursor: move;
+            z-index: 1001;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: #53fc18;
+            text-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(2px);
+        }
+
+        .edit-mode .drag-handle {
+            display: flex;
+        }
+
+        .drag-handle:hover {
+            background: linear-gradient(180deg, rgba(83, 252, 24, 0.5) 0%, rgba(83, 252, 24, 0) 100%);
+        }
+
+        .drag-handle::after {
+            content: '⋮⋮ DRAG TO SWAP ⋮⋮';
+            font-size: 16px;
+            font-weight: bold;
+            letter-spacing: 2px;
         }
 
         .drop-zone {
@@ -470,7 +493,8 @@
     </div>
 
     <div class="main-container" id="mainContainer">
-        <div class="video-container draggable-panel drop-zone" id="videoPanel" data-panel="video" draggable="false">
+        <div class="video-container draggable-panel drop-zone" id="videoPanel" data-panel="video">
+            <div class="drag-handle" id="videoDragHandle"></div>
             <div class="panel-label">📺 Video Player</div>
             <div class="loading" id="loading">
                 <div class="spinner"></div>
@@ -479,7 +503,8 @@
             <iframe id="kickPlayer" allow="autoplay; fullscreen" allowfullscreen></iframe>
         </div>
 
-        <div class="sidebar draggable-panel drop-zone" id="sidebarPanel" data-panel="sidebar" draggable="false">
+        <div class="sidebar draggable-panel drop-zone" id="sidebarPanel" data-panel="sidebar">
+            <div class="drag-handle" id="sidebarDragHandle"></div>
             <div class="panel-label">💬 Chat & Tabs</div>
             <div class="tabs">
                 <div class="tab active" data-tab="chat">💬 Party Chat</div>
@@ -1042,6 +1067,8 @@
         const mainContainer = document.getElementById('mainContainer');
         const videoPanel = document.getElementById('videoPanel');
         const sidebarPanel = document.getElementById('sidebarPanel');
+        const videoDragHandle = document.getElementById('videoDragHandle');
+        const sidebarDragHandle = document.getElementById('sidebarDragHandle');
 
         // Toggle layout edit mode
         layoutToggle.addEventListener('click', () => {
@@ -1056,22 +1083,29 @@
                 layoutHelp.style.display = 'block';
                 videoPanel.classList.add('edit-mode');
                 sidebarPanel.classList.add('edit-mode');
-                videoPanel.setAttribute('draggable', 'true');
-                sidebarPanel.setAttribute('draggable', 'true');
-                console.log('🔧 Layout edit mode ENABLED');
+                console.log('🔧 Layout edit mode ENABLED - Drag the green bars to swap panels!');
             } else {
                 // Disable edit mode
                 layoutToggle.classList.remove('active');
                 layoutHelp.style.display = 'none';
                 videoPanel.classList.remove('edit-mode');
                 sidebarPanel.classList.remove('edit-mode');
-                videoPanel.setAttribute('draggable', 'false');
-                sidebarPanel.setAttribute('draggable', 'false');
                 console.log('✓ Layout edit mode DISABLED');
             }
         }
 
-        // Drag event handlers
+        // Make drag handles initiate drag on their parent panel
+        videoDragHandle.addEventListener('mousedown', (e) => {
+            if (!isLayoutEditMode) return;
+            videoPanel.setAttribute('draggable', 'true');
+        });
+
+        sidebarDragHandle.addEventListener('mousedown', (e) => {
+            if (!isLayoutEditMode) return;
+            sidebarPanel.setAttribute('draggable', 'true');
+        });
+
+        // Drag event handlers for panels
         videoPanel.addEventListener('dragstart', handleDragStart);
         sidebarPanel.addEventListener('dragstart', handleDragStart);
 
@@ -1142,6 +1176,9 @@
             // Remove drag-over class from all panels
             videoPanel.classList.remove('drag-over');
             sidebarPanel.classList.remove('drag-over');
+            
+            // Disable draggable after drag ends
+            e.currentTarget.setAttribute('draggable', 'false');
             
             draggedPanel = null;
         }
