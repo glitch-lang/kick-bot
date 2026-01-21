@@ -93,15 +93,23 @@
             display: flex;
             flex: 1;
             overflow: hidden;
+            position: relative;
         }
 
         .video-container {
             flex: 1;
+            min-width: 300px;
             background: #000;
             display: flex;
             align-items: center;
             justify-content: center;
             position: relative;
+            border: 2px solid transparent;
+            transition: border-color 0.2s;
+        }
+
+        .video-container.edit-mode {
+            border-color: #53fc18;
         }
 
         .video-container iframe {
@@ -135,10 +143,69 @@
 
         .sidebar {
             width: 350px;
+            min-width: 250px;
             background: #0e0e10;
             border-left: 1px solid #2d2d30;
             display: flex;
             flex-direction: column;
+            position: relative;
+            border: 2px solid transparent;
+            transition: border-color 0.2s;
+        }
+
+        .sidebar.edit-mode {
+            border-color: #53fc18;
+        }
+
+        /* Resizable divider */
+        .resize-handle {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 10px;
+            cursor: col-resize;
+            z-index: 1002;
+            display: none;
+        }
+
+        .resize-handle.active {
+            display: block;
+        }
+
+        .resize-handle::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 3px;
+            background: #53fc18;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .resize-handle:hover::before,
+        .resize-handle.resizing::before {
+            opacity: 1;
+        }
+
+        .resize-handle::after {
+            content: '⋮';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #53fc18;
+            font-size: 20px;
+            opacity: 0;
+            transition: opacity 0.2s;
+            pointer-events: none;
+        }
+
+        .resize-handle:hover::after,
+        .resize-handle.resizing::after {
+            opacity: 1;
         }
 
         .tabs {
@@ -495,7 +562,7 @@
     <div class="main-container" id="mainContainer">
         <div class="video-container draggable-panel drop-zone" id="videoPanel" data-panel="video">
             <div class="drag-handle" id="videoDragHandle"></div>
-            <div class="panel-label">📺 Video Player</div>
+            <div class="panel-label">📺 Video Player - Drag divider to resize</div>
             <div class="loading" id="loading">
                 <div class="spinner"></div>
                 <p>Loading stream...</p>
@@ -504,8 +571,9 @@
         </div>
 
         <div class="sidebar draggable-panel drop-zone" id="sidebarPanel" data-panel="sidebar">
+            <div class="resize-handle" id="resizeHandle"></div>
             <div class="drag-handle" id="sidebarDragHandle"></div>
-            <div class="panel-label">💬 Chat & Tabs</div>
+            <div class="panel-label">💬 Chat & Tabs - Drag divider to resize</div>
             <div class="tabs">
                 <div class="tab active" data-tab="chat">💬 Party Chat</div>
                 <div class="tab" data-tab="kickchat">🟢 Kick Chat</div>
@@ -1090,6 +1158,71 @@
         const sidebarPanel = document.getElementById('sidebarPanel');
         const videoDragHandle = document.getElementById('videoDragHandle');
         const sidebarDragHandle = document.getElementById('sidebarDragHandle');
+        const resizeHandle = document.getElementById('resizeHandle');
+
+        // ===== RESIZABLE PANELS =====
+        let isResizing = false;
+        let startX = 0;
+        let startWidth = 0;
+
+        resizeHandle.addEventListener('mousedown', (e) => {
+            if (!isLayoutEditMode) return;
+            isResizing = true;
+            startX = e.clientX;
+            startWidth = sidebarPanel.offsetWidth;
+            resizeHandle.classList.add('resizing');
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+            
+            const deltaX = startX - e.clientX; // Reversed because we're resizing from the left
+            const newWidth = startWidth + deltaX;
+            
+            // Constrain width between min and reasonable max
+            const minWidth = 250;
+            const maxWidth = window.innerWidth - 400; // Leave space for video
+            const constrainedWidth = Math.max(minWidth, Math.min(newWidth, maxWidth));
+            
+            sidebarPanel.style.width = `${constrainedWidth}px`;
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (!isResizing) return;
+            isResizing = false;
+            resizeHandle.classList.remove('resizing');
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            
+            // Save the new width
+            savePanelSizes();
+        });
+
+        function savePanelSizes() {
+            const sizes = {
+                sidebarWidth: sidebarPanel.offsetWidth
+            };
+            localStorage.setItem('watchPartyPanelSizes', JSON.stringify(sizes));
+            console.log('💾 Saved panel sizes:', sizes);
+        }
+
+        function loadPanelSizes() {
+            const saved = localStorage.getItem('watchPartyPanelSizes');
+            if (!saved) return;
+            
+            try {
+                const sizes = JSON.parse(saved);
+                if (sizes.sidebarWidth) {
+                    sidebarPanel.style.width = `${sizes.sidebarWidth}px`;
+                    console.log('📂 Restored panel sizes:', sizes);
+                }
+            } catch (e) {
+                console.error('Failed to load panel sizes:', e);
+            }
+        }
 
         // Toggle layout edit mode
         layoutToggle.addEventListener('click', () => {
@@ -1104,13 +1237,15 @@
                 layoutHelp.style.display = 'block';
                 videoPanel.classList.add('edit-mode');
                 sidebarPanel.classList.add('edit-mode');
-                console.log('🔧 Layout edit mode ENABLED - Drag the green bars to swap panels!');
+                resizeHandle.classList.add('active');
+                console.log('🔧 Layout edit mode ENABLED - Drag green bars to swap, drag divider to resize!');
             } else {
                 // Disable edit mode
                 layoutToggle.classList.remove('active');
                 layoutHelp.style.display = 'none';
                 videoPanel.classList.remove('edit-mode');
                 sidebarPanel.classList.remove('edit-mode');
+                resizeHandle.classList.remove('active');
                 console.log('✓ Layout edit mode DISABLED');
             }
         }
@@ -1255,8 +1390,13 @@
             // Reset to default order: video first, sidebar second
             mainContainer.appendChild(videoPanel);
             mainContainer.appendChild(sidebarPanel);
+            
+            // Reset to default size
+            sidebarPanel.style.width = '350px';
+            
             saveLayoutToStorage();
-            console.log('↺ Reset to default layout');
+            savePanelSizes();
+            console.log('↺ Reset to default layout and sizes');
         });
 
         // Save/Done button
@@ -1268,6 +1408,7 @@
         // Load saved layout on page load
         document.addEventListener('DOMContentLoaded', () => {
             loadLayoutFromStorage();
+            loadPanelSizes();
         });
     </script>
 </body>
