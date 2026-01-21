@@ -129,9 +129,14 @@ export class WatchPartyServer {
       }
     });
 
-    // Watch party page
+    // Watch party page (regular)
     this.app.get('/party/:partyId', (req, res) => {
       res.sendFile(path.join(__dirname, 'public/watch-party.html'));
+    });
+
+    // Activity page (Discord Activity iframe)
+    this.app.get('/activity/:partyId', (req, res) => {
+      res.sendFile(path.join(__dirname, 'public/activity.html'));
     });
 
     // Get party info

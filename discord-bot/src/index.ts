@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, EmbedBuilder, ChannelType, TextChannel, VoiceChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { Client, GatewayIntentBits, EmbedBuilder, ChannelType, TextChannel, VoiceChannel, ActionRowBuilder, ButtonBuilder, ButtonStyle, REST, Routes } from 'discord.js';
 import axios from 'axios';
 import * as dotenv from 'dotenv';
 import crypto from 'crypto';
@@ -8,6 +8,7 @@ import { StreamManager } from './stream-manager';
 import { BrowserStreamManager } from './browser-stream-manager';
 import { WatchPartyServer } from './watch-party-server';
 import { AuthManager } from './auth-manager';
+import { ActivityLauncher } from './activity-launcher';
 
 dotenv.config();
 
@@ -40,6 +41,9 @@ const PORT = parseInt(process.env.PORT || '3001', 10);
 
 // Declare Watch Party Server (will be initialized after database is ready)
 let watchPartyServer: WatchPartyServer;
+
+// Declare Activity Launcher (will be initialized after watch party server is ready)
+let activityLauncher: ActivityLauncher | null = null;
 
 // Start LocalTunnel if enabled
 async function startTunnel() {
@@ -256,6 +260,38 @@ client.once('ready', async () => {
   // Start watch party server
   await watchPartyServer.start();
   
+  // Initialize Activity Launcher if Activity ID is configured
+  if (process.env.DISCORD_ACTIVITY_ID && process.env.DISCORD_ACTIVITY_ID !== 'YOUR_ACTIVITY_ID') {
+    activityLauncher = new ActivityLauncher(watchPartyServer, process.env.DISCORD_ACTIVITY_ID);
+    
+    // Register slash commands
+    try {
+      const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN!);
+      
+      const commands = [
+        activityLauncher.getSlashCommand().toJSON()
+      ];
+      
+      console.log('🔄 Registering Discord Activity slash commands...');
+      
+      // Register globally (can take up to 1 hour to propagate)
+      // For testing, you can use guild-specific commands instead
+      await rest.put(
+        Routes.applicationCommands(client.user!.id),
+        { body: commands }
+      );
+      
+      console.log('✅ Discord Activity slash commands registered!');
+      console.log('   Use /activity <streamer> to launch watch parties');
+      
+    } catch (error) {
+      console.error('❌ Failed to register slash commands:', error);
+    }
+  } else {
+    console.log('ℹ️  Discord Activities not configured (set DISCORD_ACTIVITY_ID to enable)');
+    console.log('   See DISCORD_ACTIVITY_SETUP.md for setup instructions');
+  }
+  
   // Load watch parties from database
   db.loadWatchParties().then(parties => {
     parties.forEach(party => {
@@ -409,8 +445,17 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-// Handle button interactions
+// Handle interactions (slash commands and buttons)
 client.on('interactionCreate', async (interaction) => {
+  // Handle slash commands
+  if (interaction.isChatInputCommand()) {
+    if (interaction.commandName === 'activity' && activityLauncher) {
+      await activityLauncher.handleCommand(interaction);
+      return;
+    }
+  }
+  
+  // Handle button interactions
   if (!interaction.isButton()) return;
 
   // Handle both join_party_ and watch_now_ buttons

@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kick Watch Party Activity</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <!-- Set Discord Client ID from query params or detect from URL -->
+    <script>
+        // Get Discord Client ID from various sources
+        const urlParams = new URLSearchParams(window.location.search);
+        window.DISCORD_CLIENT_ID = urlParams.get('client_id') || 
+                                    urlParams.get('clientId') ||
+                                    document.currentScript?.getAttribute('data-client-id') ||
+                                    ''; // Will be set by SDK automatically if in Discord
+    </script>
+    <!-- Discord Embedded App SDK -->
+    <script type="module">
+        import { DiscordSDK } from 'https://cdn.jsdelivr.net/npm/@discord/embedded-app-sdk@latest/+esm';
+
+        // Initialize Discord SDK
+        // Discord SDK can auto-detect client ID when running inside Discord
+        const discordSdk = new DiscordSDK(window.DISCORD_CLIENT_ID);
+
+        let auth;
+        
+        async function setupDiscordSdk() {
+            console.log('🎮 Initializing Discord Activity...');
+            
+            try {
+                // Wait for Discord to be ready
+                await discordSdk.ready();
+                console.log('✅ Discord SDK ready!');
+                console.log('Channel ID:', discordSdk.channelId);
+                console.log('Guild ID:', discordSdk.guildId);
+                
+                // Authorize with Discord (optional, for user info)
+                try {
+                    const { code } = await discordSdk.commands.authorize({
+                        client_id: window.DISCORD_CLIENT_ID,
+                        response_type: 'code',
+                        state: '',
+                        prompt: 'none',
+                        scope: ['identify', 'guilds']
+                    });
+
+                    // Exchange code for access token (you'd do this on your server)
+                    console.log('✅ Discord auth code received:', code);
+                    
+                    // Get user info
+                    const user = await discordSdk.commands.getUser();
+                    console.log('✅ Discord user:', user);
+                    
+                    // Auto-fill username from Discord
+                    if (user && user.username) {
+                        window.DISCORD_USERNAME = user.username;
+                        window.DISCORD_USER_ID = user.id;
+                        window.DISCORD_AVATAR = user.avatar;
+                    }
+                } catch (e) {
+                    console.warn('⚠️ Discord auth not available:', e);
+                }
+                
+                // Subscribe to voice channel updates
+                try {
+                    await discordSdk.subscribe('VOICE_STATE_UPDATE', (data) => {
+                        console.log('🎙️ Voice state update:', data);
+                    });
+                } catch (e) {
+                    console.warn('⚠️ Could not subscribe to voice updates:', e);
+                }
+                
+                // Mark as ready
+                window.DISCORD_SDK_READY = true;
+                window.DISCORD_SDK = discordSdk;
+                
+                // Trigger ready event for main app
+                window.dispatchEvent(new Event('discord-sdk-ready'));
+                
+            } catch (error) {
+                console.error('❌ Discord SDK initialization failed:', error);
+                // Continue anyway - can still work as regular watch party
+                window.DISCORD_SDK_READY = false;
+            }
+        }
+        
+        // Initialize on load
+        setupDiscordSdk();
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #18181b;
+            color: #efeff1;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .header {
+            background: #0e0e10;
+            padding: 12px 16px;
+            border-bottom: 2px solid #5865f2;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        .header h1 {
+            font-size: 18px;
+            color: #5865f2;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .discord-badge {
+            background: #5865f2;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .header-right {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            font-size: 13px;
+        }
+
+        .viewer-count {
+            background: #5865f2;
+            padding: 5px 12px;
+            border-radius: 12px;
+            font-size: 13px;
+        }
+
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .video-container {
+            flex: 1;
+            min-width: 300px;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .video-container iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 10;
+        }
+
+        .spinner {
+            border: 4px solid #333;
+            border-top: 4px solid #5865f2;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .sidebar {
+            width: 340px;
+            background: #0e0e10;
+            border-left: 1px solid #2d2d30;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .tabs {
+            display: flex;
+            background: #18181b;
+            border-bottom: 1px solid #2d2d30;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 12px;
+            text-align: center;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+            font-size: 13px;
+        }
+
+        .tab:hover {
+            background: #1f1f23;
+        }
+
+        .tab.active {
+            border-bottom-color: #5865f2;
+            color: #5865f2;
+        }
+
+        .tab-content {
+            flex: 1;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .tab-content.active {
+            display: flex;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+        }
+
+        .chat-message {
+            margin-bottom: 10px;
+            animation: slideIn 0.3s ease-out;
+            font-size: 13px;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .chat-message .username {
+            font-weight: bold;
+            margin-right: 5px;
+        }
+
+        .chat-message.discord .username {
+            color: #5865f2;
+        }
+
+        .chat-message.kick .username {
+            color: #53fc18;
+        }
+
+        .chat-message .timestamp {
+            font-size: 10px;
+            color: #adadb8;
+            margin-left: 5px;
+        }
+
+        .chat-input-container {
+            padding: 12px;
+            background: #18181b;
+            border-top: 1px solid #2d2d30;
+        }
+
+        .chat-input-wrapper {
+            display: flex;
+            gap: 8px;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 10px;
+            background: #0e0e10;
+            border: 1px solid #2d2d30;
+            border-radius: 5px;
+            color: #efeff1;
+            font-size: 13px;
+        }
+
+        .send-button {
+            padding: 10px 16px;
+            background: #5865f2;
+            border: none;
+            border-radius: 5px;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+            font-size: 13px;
+        }
+
+        .send-button:hover:not(:disabled) {
+            background: #4752c4;
+        }
+
+        .send-button:disabled {
+            background: #333;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .status-message {
+            padding: 8px 12px;
+            background: #1f1f23;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            font-size: 12px;
+            text-align: center;
+        }
+
+        .status-message.success {
+            background: rgba(88, 101, 242, 0.2);
+            color: #5865f2;
+        }
+
+        .status-message.info {
+            background: rgba(83, 252, 24, 0.2);
+            color: #53fc18;
+        }
+
+        input::placeholder {
+            color: #adadb8;
+        }
+
+        input:focus, button:focus {
+            outline: 2px solid #5865f2;
+        }
+
+        @media (max-width: 768px) {
+            .main-container {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                height: 40%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>
+            <span>🎬 Kick Watch Party</span>
+            <span class="discord-badge">Discord Activity</span>
+        </h1>
+        <div class="header-right">
+            <div id="voiceChannel" style="display: none; color: #adadb8;">
+                🎙️ <span id="channelName">Loading...</span>
+            </div>
+            <div class="viewer-count">👥 <span id="viewerCount">0</span></div>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="video-container">
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Loading stream...</p>
+            </div>
+            <iframe id="kickPlayer" allow="autoplay; fullscreen" allowfullscreen></iframe>
+        </div>
+
+        <div class="sidebar">
+            <div class="tabs">
+                <div class="tab active" data-tab="chat">💬 Chat</div>
+                <div class="tab" data-tab="kick">🟢 Kick</div>
+            </div>
+
+            <div id="chatTab" class="tab-content active">
+                <div class="chat-messages" id="chatMessages">
+                    <div class="status-message success">
+                        ✅ Connected to Discord Activity
+                    </div>
+                </div>
+                <div class="chat-input-container">
+                    <div class="chat-input-wrapper">
+                        <input type="text" id="chatInput" class="chat-input" placeholder="Type a message..." maxlength="500">
+                        <button id="sendButton" class="send-button">Send</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="kickTab" class="tab-content">
+                <div style="flex: 1; display: flex; flex-direction: column;">
+                    <iframe id="kickChatIframe" style="flex: 1; border: none; background: #0e0e10;"></iframe>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Get party ID from URL
+        const partyId = window.location.pathname.split('/activity/')[1] || window.location.pathname.split('/party/')[1];
+        
+        // Tab switching
+        document.addEventListener('DOMContentLoaded', () => {
+            const tabButtons = document.querySelectorAll('.tab');
+            const tabContents = document.querySelectorAll('.tab-content');
+            
+            tabButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const tabName = button.getAttribute('data-tab');
+                    
+                    tabButtons.forEach(btn => btn.classList.remove('active'));
+                    tabContents.forEach(content => content.classList.remove('active'));
+                    
+                    button.classList.add('active');
+                    
+                    if (tabName === 'chat') {
+                        document.getElementById('chatTab').classList.add('active');
+                    } else if (tabName === 'kick') {
+                        document.getElementById('kickTab').classList.add('active');
+                    }
+                });
+            });
+        });
+
+        // Socket.IO connection
+        const socket = io();
+        let currentUsername = 'Guest';
+        let discordUserId = null;
+
+        // DOM elements
+        const chatInput = document.getElementById('chatInput');
+        const sendButton = document.getElementById('sendButton');
+        const chatMessages = document.getElementById('chatMessages');
+        const viewerCountEl = document.getElementById('viewerCount');
+        const kickPlayer = document.getElementById('kickPlayer');
+        const kickChatIframe = document.getElementById('kickChatIframe');
+        const loading = document.getElementById('loading');
+        const voiceChannelEl = document.getElementById('voiceChannel');
+        const channelNameEl = document.getElementById('channelName');
+
+        // Wait for Discord SDK to be ready
+        window.addEventListener('discord-sdk-ready', () => {
+            console.log('🎮 Discord SDK ready event received');
+            
+            if (window.DISCORD_USERNAME) {
+                currentUsername = window.DISCORD_USERNAME;
+                discordUserId = window.DISCORD_USER_ID;
+                addSystemMessage(`✅ Logged in as ${currentUsername}`, 'success');
+            }
+            
+            if (window.DISCORD_SDK) {
+                const sdk = window.DISCORD_SDK;
+                
+                // Show voice channel info
+                if (sdk.channelId) {
+                    voiceChannelEl.style.display = 'block';
+                    channelNameEl.textContent = 'Voice Channel';
+                    
+                    // Get channel name from Discord
+                    sdk.commands.getChannel({ channel_id: sdk.channelId })
+                        .then(channel => {
+                            if (channel && channel.name) {
+                                channelNameEl.textContent = channel.name;
+                            }
+                        })
+                        .catch(e => console.warn('Could not get channel info:', e));
+                }
+            }
+            
+            // Auto-join party with Discord credentials
+            joinParty();
+        });
+
+        // Fallback: join after 2 seconds if SDK isn't ready
+        setTimeout(() => {
+            if (!window.DISCORD_SDK_READY) {
+                console.log('⚠️ Discord SDK not ready after 2s, proceeding without it');
+                addSystemMessage('⚠️ Running in standalone mode', 'info');
+                joinParty();
+            }
+        }, 2000);
+
+        function joinParty() {
+            if (!partyId) {
+                addSystemMessage('❌ Invalid party ID', 'error');
+                return;
+            }
+
+            // Load party info
+            fetch(`/api/party/${partyId}`)
+                .then(res => res.json())
+                .then(data => {
+                    document.title = `Watch Party - ${data.streamerName}`;
+                    
+                    // Load Kick player
+                    const playerUrl = `https://player.kick.com/${data.streamerName}?autoplay=true&muted=true&parent=${window.location.hostname}`;
+                    kickPlayer.src = playerUrl;
+                    loading.style.display = 'none';
+
+                    // Load Kick chat
+                    kickChatIframe.src = `https://kick.com/popout/${data.streamerName}/chat`;
+
+                    // Join party via socket
+                    socket.emit('join-party', { 
+                        partyId, 
+                        username: currentUsername,
+                        discordId: discordUserId
+                    });
+
+                    // Display recent messages
+                    data.recentMessages.forEach(msg => addMessageToChat(msg));
+                    viewerCountEl.textContent = data.viewerCount;
+
+                    if (data.twoWayChat && data.kickChatConnected) {
+                        addSystemMessage('🔄 Two-way chat enabled!', 'info');
+                    }
+                })
+                .catch(err => {
+                    console.error('Error loading party:', err);
+                    loading.innerHTML = '<p style="color: #f00;">❌ Watch party not found</p>';
+                });
+        }
+
+        // Chat functionality
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !sendButton.disabled) {
+                sendMessage();
+            }
+        });
+
+        sendButton.addEventListener('click', sendMessage);
+
+        function sendMessage() {
+            const message = chatInput.value.trim();
+            if (!message) return;
+
+            socket.emit('send-message', {
+                partyId,
+                username: currentUsername,
+                message
+            });
+
+            chatInput.value = '';
+        }
+
+        // Socket events
+        socket.on('party-info', (data) => {
+            console.log('Joined party:', data);
+        });
+
+        socket.on('new-message', (msg) => {
+            addMessageToChat(msg);
+        });
+
+        socket.on('viewer-joined', (data) => {
+            viewerCountEl.textContent = data.viewerCount;
+            if (data.username !== currentUsername) {
+                addSystemMessage(`${data.username} joined`, 'info');
+            }
+        });
+
+        socket.on('viewer-left', (data) => {
+            viewerCountEl.textContent = data.viewerCount;
+            addSystemMessage(`${data.username} left`, 'info');
+        });
+
+        socket.on('party-ended', () => {
+            addSystemMessage('Watch party has ended', 'error');
+            chatInput.disabled = true;
+            sendButton.disabled = true;
+        });
+
+        function addMessageToChat(msg) {
+            const messageEl = document.createElement('div');
+            messageEl.className = `chat-message ${msg.platform}`;
+            
+            const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            messageEl.innerHTML = `
+                <span class="username">${escapeHtml(msg.username)}:</span>
+                <span>${escapeHtml(msg.message)}</span>
+                <span class="timestamp">${time}</span>
+            `;
+            
+            chatMessages.appendChild(messageEl);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function addSystemMessage(text, type = 'info') {
+            const messageEl = document.createElement('div');
+            messageEl.className = `status-message ${type}`;
+            messageEl.textContent = text;
+            chatMessages.appendChild(messageEl);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
