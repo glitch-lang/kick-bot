@@ -600,14 +600,17 @@
             });
 
         // Username input
-        usernameInput.addEventListener('input', (e) => {
-            const username = e.target.value.trim();
-            if (username && !currentUsername) {
-                currentUsername = username;
-                socket.emit('join-party', { partyId, username });
-                chatInput.disabled = false;
-                sendButton.disabled = false;
-                usernameInput.disabled = true;
+        usernameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const username = e.target.value.trim();
+                if (username && !currentUsername) {
+                    currentUsername = username;
+                    socket.emit('join-party', { partyId, username });
+                    chatInput.disabled = false;
+                    sendButton.disabled = false;
+                    usernameInput.disabled = true;
+                    addSystemMessage(`✅ Welcome ${username}!`);
+                }
             }
         });
 
