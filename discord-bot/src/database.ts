@@ -60,16 +60,38 @@ export class Database {
         }
         console.log(`✅ Database opened successfully at ${dbPath}`);
         
-        // Initialize tables after connection is established
-        this.init()
-          .then(() => {
-            console.log(`✅ Database is ready for use`);
-            resolve();
-          })
-          .catch((error) => {
-            console.error(`❌ CRITICAL: Database initialization failed:`, error);
-            reject(error);
+        // Add error handler to prevent unhandled errors from crashing
+        this.db.on('error', (err) => {
+          console.error('❌ Database error event:', err);
+        });
+        
+        // Configure SQLite for Railway's ephemeral storage
+        this.db.serialize(() => {
+          // Use memory for temp files instead of disk
+          this.db.run('PRAGMA temp_store = MEMORY', (err) => {
+            if (err) console.error('❌ Failed to set temp_store:', err);
           });
+          
+          // Use WAL mode for better concurrency (if not ephemeral)
+          if (!process.env.RAILWAY_ENVIRONMENT) {
+            this.db.run('PRAGMA journal_mode = WAL', (err) => {
+              if (err) console.error('❌ Failed to set journal_mode:', err);
+            });
+          }
+          
+          console.log('✅ SQLite configuration applied');
+          
+          // Initialize tables after configuration
+          this.init()
+            .then(() => {
+              console.log(`✅ Database is ready for use`);
+              resolve();
+            })
+            .catch((error) => {
+              console.error(`❌ CRITICAL: Database initialization failed:`, error);
+              reject(error);
+            });
+        });
       });
     });
   }
