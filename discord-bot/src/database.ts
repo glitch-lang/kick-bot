@@ -1,10 +1,41 @@
 import sqlite3 from 'sqlite3';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export class Database {
   private db: sqlite3.Database;
 
   constructor() {
-    this.db = new sqlite3.Database('./data/discord-bot.db');
+    // Use environment variable for DB path, or Railway's temp directory, or local data folder
+    let dbDir: string;
+    
+    if (process.env.DB_PATH) {
+      // Custom DB path from environment
+      dbDir = path.dirname(process.env.DB_PATH);
+    } else if (process.env.RAILWAY_ENVIRONMENT) {
+      // On Railway, use /tmp (ephemeral but writable)
+      dbDir = '/tmp/data';
+      console.log('🚂 Running on Railway - using ephemeral storage (/tmp)');
+      console.log('⚠️  Note: Database will reset on each deployment. For persistence, add a Railway volume.');
+    } else {
+      // Local development
+      dbDir = './data';
+    }
+    
+    const dbPath = process.env.DB_PATH || path.join(dbDir, 'discord-bot.db');
+    
+    // Create directory if it doesn't exist
+    if (!fs.existsSync(dbDir)) {
+      try {
+        fs.mkdirSync(dbDir, { recursive: true });
+        console.log(`✅ Created database directory: ${dbDir}`);
+      } catch (error) {
+        console.error(`❌ Failed to create database directory: ${error}`);
+      }
+    }
+    
+    console.log(`📂 Using database path: ${dbPath}`);
+    this.db = new sqlite3.Database(dbPath);
     this.init();
   }
 
