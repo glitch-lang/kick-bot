@@ -159,7 +159,27 @@ export class Database {
       )
     `);
     
+    // Run migrations
+    await this.runMigrations();
+    
     console.log('✅ Discord bot database initialized');
+  }
+
+  private async runMigrations() {
+    try {
+      // Migration 1: Add two_way_chat column to watch_party_settings if it doesn't exist
+      const tableInfo: any[] = await this.allQuery('PRAGMA table_info(watch_party_settings)');
+      const hasTwoWayChat = tableInfo.some((col: any) => col.name === 'two_way_chat');
+      
+      if (!hasTwoWayChat) {
+        console.log('🔄 Running migration: Adding two_way_chat column...');
+        await this.runQuery('ALTER TABLE watch_party_settings ADD COLUMN two_way_chat INTEGER DEFAULT 1');
+        console.log('✅ Migration complete: two_way_chat column added');
+      }
+    } catch (error) {
+      console.error('⚠️  Migration error:', error);
+      // Don't throw - allow bot to continue
+    }
   }
 
   async loadWatchParties(): Promise<any[]> {
