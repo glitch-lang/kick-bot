@@ -118,6 +118,10 @@ export class OAuthRouter {
     // Initiate OAuth login
     this.router.get('/auth/login', (req: Request, res: Response) => {
       try {
+        // Save the return URL (where user came from) to redirect back after login
+        const returnUrl = req.query.returnUrl as string || req.headers.referer || '/party';
+        req.session.returnUrl = returnUrl;
+        
         // Generate session ID if not exists
         if (!req.session.userId) {
           req.session.userId = this.authManager.generateSessionId();

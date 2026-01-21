@@ -234,6 +234,8 @@ client.once('ready', async () => {
   setInterval(checkLiveStreamers, 120000);
   console.log('🔍 Started live streamer checker (every 2 minutes)');
   
+  console.log('\n🤖 ✅ Crosstalk Discord Bot is ready! ✅ 🤖\n');
+  
   // Also check immediately on startup
   setTimeout(checkLiveStreamers, 10000); // Wait 10s after startup
   
