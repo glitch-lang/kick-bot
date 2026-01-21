@@ -370,9 +370,9 @@
 
         <div class="sidebar">
             <div class="tabs">
-                <div class="tab active" onclick="switchTab('chat')">💬 Party Chat</div>
-                <div class="tab" onclick="switchTab('kickchat')">🟢 Kick Chat</div>
-                <div class="tab" onclick="switchTab('viewers')">👥 Viewers</div>
+                <div class="tab active" data-tab="chat">💬 Party Chat</div>
+                <div class="tab" data-tab="kickchat">🟢 Kick Chat</div>
+                <div class="tab" data-tab="viewers">👥 Viewers</div>
             </div>
 
             <div id="chatTab" class="tab-content active">
@@ -409,28 +409,35 @@
     </div>
 
     <script>
-        // Define switchTab FIRST so inline onclick handlers can find it
-        function switchTab(tab) {
-            console.log('Switching to tab:', tab);
-            const tabs = document.querySelectorAll('.tab');
-            const contents = document.querySelectorAll('.tab-content');
-            
-            tabs.forEach(t => t.classList.remove('active'));
-            contents.forEach(c => c.classList.remove('active'));
-            
-            if (tab === 'chat') {
-                tabs[0].classList.add('active');
-                document.getElementById('chatTab').classList.add('active');
-            } else if (tab === 'kickchat') {
-                tabs[1].classList.add('active');
-                document.getElementById('kickchatTab').classList.add('active');
-            } else if (tab === 'viewers') {
-                tabs[2].classList.add('active');
-                document.getElementById('viewersTab').classList.add('active');
-            }
-        }
-        
         const partyId = window.location.pathname.split('/party/')[1];
+        
+        // Set up tab switching with event listeners (CSP-safe, no inline onclick)
+        document.addEventListener('DOMContentLoaded', () => {
+            const tabButtons = document.querySelectorAll('.tab');
+            const tabContents = document.querySelectorAll('.tab-content');
+            
+            tabButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const tabName = button.getAttribute('data-tab');
+                    console.log('Switching to tab:', tabName);
+                    
+                    // Remove all active classes
+                    tabButtons.forEach(btn => btn.classList.remove('active'));
+                    tabContents.forEach(content => content.classList.remove('active'));
+                    
+                    // Add active class to clicked tab and corresponding content
+                    button.classList.add('active');
+                    
+                    if (tabName === 'chat') {
+                        document.getElementById('chatTab').classList.add('active');
+                    } else if (tabName === 'kickchat') {
+                        document.getElementById('kickchatTab').classList.add('active');
+                    } else if (tabName === 'viewers') {
+                        document.getElementById('viewersTab').classList.add('active');
+                    }
+                });
+            });
+        });
         const socket = io();
         let currentUsername = '';
         let partyInfo = null;
