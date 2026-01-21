@@ -78,11 +78,14 @@ export class OAuthRouter {
     this.router.use('/auth', authLimiter);
 
     // Session management with SQLite store
+    // Use Railway's writable /tmp directory if on Railway, otherwise local ./data
+    const sessionDir = process.env.RAILWAY_ENVIRONMENT ? '/tmp/data' : './data';
+    
     this.router.use(
       session({
         store: new SQLiteStore({
           db: 'sessions.db',
-          dir: './data',
+          dir: sessionDir,
         }),
         secret: this.sessionSecret,
         resave: false,
