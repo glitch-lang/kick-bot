@@ -392,25 +392,23 @@
             </div>
 
             <div id="kickchatTab" class="tab-content">
-                <div class="kick-chat-container">
-                    <div id="kickChatLoading" style="display: flex; align-items: center; justify-content: center; height: 100%; color: #adadb8;">
-                        <div>Loading Kick chat...</div>
+                <div class="kick-chat-container" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; text-align: center;">
+                    <div style="font-size: 64px; margin-bottom: 20px;">💬</div>
+                    <h2 style="color: #53fc18; margin-bottom: 15px;">Kick Chat Popup</h2>
+                    <p style="color: #adadb8; margin-bottom: 30px; max-width: 500px; line-height: 1.6;">
+                        Click below to open Kick chat in a popup window positioned at this location.
+                        You can log in and chat directly with the streamer!
+                    </p>
+                    <button id="openKickChatPopup" 
+                            style="background: #53fc18; color: #000; padding: 15px 30px; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-bottom: 20px; transition: transform 0.2s;">
+                        🪟 Open Kick Chat Popup
+                    </button>
+                    <div id="popupStatus" style="color: #adadb8; font-size: 14px; margin-top: 10px; display: none;">
+                        <span id="popupStatusText"></span>
                     </div>
-                    <iframe id="kickChatIframe" class="kick-chat-iframe" src="" allowfullscreen style="display: none;"></iframe>
-                    <div id="kickChatError" style="display: none; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; height: 100%;">
-                        <div style="font-size: 48px; margin-bottom: 20px;">💬</div>
-                        <h3 style="color: #53fc18; margin-bottom: 15px;">Kick Chat</h3>
-                        <p style="color: #adadb8; margin-bottom: 20px; max-width: 400px;">
-                            Kick chat couldn't be embedded.
-                        </p>
-                        <a id="kickChatLink" href="#" target="_blank" rel="noopener noreferrer" 
-                           style="background: #53fc18; color: #000; padding: 12px 24px; border-radius: 5px; text-decoration: none; font-weight: bold; display: inline-block;">
-                            🟢 Open Kick Chat in New Tab
-                        </a>
-                        <p style="color: #666; margin-top: 15px; font-size: 14px;">
-                            Use Party Chat below to chat with other watch party viewers!
-                        </p>
-                    </div>
+                    <p style="color: #666; margin-top: 20px; font-size: 14px; max-width: 400px;">
+                        💡 <strong>Tip:</strong> Use Party Chat to discuss with other viewers without leaving the watch party!
+                    </p>
                 </div>
             </div>
 
@@ -637,66 +635,69 @@
                 kickPlayer.src = playerUrl;
                 loading.style.display = 'none';
 
-                // Try loading Kick chat iframe with fallback
-                const kickChatIframe = document.getElementById('kickChatIframe');
-                const kickChatLoading = document.getElementById('kickChatLoading');
-                const kickChatError = document.getElementById('kickChatError');
-                const kickChatLink = document.getElementById('kickChatLink');
+                // Setup Kick chat popup button
+                const openKickChatPopup = document.getElementById('openKickChatPopup');
+                const popupStatus = document.getElementById('popupStatus');
+                const popupStatusText = document.getElementById('popupStatusText');
+                let kickChatPopupWindow = null;
                 
-                // Try multiple Kick chat URLs (official popout first!)
-                const chatUrls = [
-                    `https://kick.com/popout/${data.streamerName}/chat`,  // Official popout chat
-                    `https://kick.com/${data.streamerName}/chatroom`,      // Standard chatroom
-                    `https://kick.com/${data.streamerName}`                // Fallback to main page
-                ];
-                
-                let currentUrlIndex = 0;
-                
-                const tryLoadChat = () => {
-                    if (currentUrlIndex >= chatUrls.length) {
-                        console.warn('❌ All Kick chat URLs failed, showing fallback link');
-                        kickChatLoading.style.display = 'none';
-                        kickChatError.style.display = 'flex';
-                        kickChatLink.href = `https://kick.com/${data.streamerName}`;
+                openKickChatPopup.addEventListener('click', () => {
+                    // Check if popup is already open
+                    if (kickChatPopupWindow && !kickChatPopupWindow.closed) {
+                        kickChatPopupWindow.focus();
+                        popupStatusText.textContent = '✅ Popup already open - bringing to front';
+                        popupStatus.style.display = 'block';
+                        setTimeout(() => { popupStatus.style.display = 'none'; }, 3000);
                         return;
                     }
                     
-                    const chatUrl = chatUrls[currentUrlIndex];
-                    console.log(`Attempting Kick chat URL [${currentUrlIndex + 1}/${chatUrls.length}]:`, chatUrl);
+                    // Get the position and size of the tab content area
+                    const tabContent = document.getElementById('kickchatTab');
+                    const rect = tabContent.getBoundingClientRect();
                     
-                    kickChatIframe.src = chatUrl;
+                    // Calculate popup position (aligned with tab content)
+                    const popupWidth = 400;
+                    const popupHeight = 600;
+                    const left = window.screenX + rect.left;
+                    const top = window.screenY + rect.top + 60; // Offset for browser chrome
                     
-                    // Success: show iframe
-                    const onLoad = () => {
-                        console.log('✅ Kick chat loaded successfully:', chatUrl);
-                        kickChatLoading.style.display = 'none';
-                        kickChatIframe.style.display = 'block';
-                        kickChatIframe.removeEventListener('load', onLoad);
-                        kickChatIframe.removeEventListener('error', onError);
-                    };
+                    // Open Kick popout chat in a positioned popup
+                    const kickChatUrl = `https://kick.com/popout/${data.streamerName}/chat`;
+                    const features = `width=${popupWidth},height=${popupHeight},left=${left},top=${top},resizable=yes,scrollbars=yes`;
                     
-                    // Error: try next URL
-                    const onError = () => {
-                        console.warn('⚠️ Failed to load:', chatUrl);
-                        kickChatIframe.removeEventListener('load', onLoad);
-                        kickChatIframe.removeEventListener('error', onError);
-                        currentUrlIndex++;
-                        setTimeout(tryLoadChat, 500);
-                    };
+                    console.log('🪟 Opening Kick chat popup:', kickChatUrl);
+                    console.log('Position:', { left, top, width: popupWidth, height: popupHeight });
                     
-                    kickChatIframe.addEventListener('load', onLoad);
-                    kickChatIframe.addEventListener('error', onError);
+                    kickChatPopupWindow = window.open(kickChatUrl, 'KickChat', features);
                     
-                    // Timeout fallback after 5 seconds
-                    setTimeout(() => {
-                        if (kickChatIframe.style.display === 'none' && kickChatError.style.display === 'none') {
-                            console.warn('⏱️ Timeout loading:', chatUrl);
-                            onError();
-                        }
-                    }, 5000);
-                };
+                    if (kickChatPopupWindow) {
+                        popupStatusText.textContent = '✅ Kick chat popup opened! Log in to chat with the streamer.';
+                        popupStatusText.style.color = '#53fc18';
+                        popupStatus.style.display = 'block';
+                        
+                        // Check if popup was closed
+                        const checkPopup = setInterval(() => {
+                            if (kickChatPopupWindow && kickChatPopupWindow.closed) {
+                                clearInterval(checkPopup);
+                                popupStatusText.textContent = '💬 Popup closed - click to reopen';
+                                popupStatusText.style.color = '#adadb8';
+                                setTimeout(() => { popupStatus.style.display = 'none'; }, 3000);
+                            }
+                        }, 1000);
+                    } else {
+                        popupStatusText.textContent = '❌ Popup blocked! Please allow popups for this site.';
+                        popupStatusText.style.color = '#ff6b6b';
+                        popupStatus.style.display = 'block';
+                    }
+                });
                 
-                tryLoadChat();
+                // Add hover effect to button
+                openKickChatPopup.addEventListener('mouseenter', () => {
+                    openKickChatPopup.style.transform = 'scale(1.05)';
+                });
+                openKickChatPopup.addEventListener('mouseleave', () => {
+                    openKickChatPopup.style.transform = 'scale(1)';
+                });
 
                 // Display recent messages
                 data.recentMessages.forEach(msg => addMessageToChat(msg));
