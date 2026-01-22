@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Activity Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-family: Arial, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+        .info {
+            background: rgba(0,0,0,0.3);
+            padding: 20px;
+            border-radius: 12px;
+            margin: 10px 0;
+            max-width: 600px;
+        }
+        .success {
+            color: #00ff00;
+            font-size: 24px;
+        }
+    </style>
+</head>
+<body>
+    <h1>✅ Activity is Loading!</h1>
+    
+    <div class="success">
+        If you can see this, your Activity URL mappings are working!
+    </div>
+    
+    <div class="info">
+        <strong>Current URL:</strong><br>
+        <span id="url">Loading...</span>
+    </div>
+    
+    <div class="info">
+        <strong>Hostname:</strong><br>
+        <span id="host">Loading...</span>
+    </div>
+    
+    <div class="info">
+        <strong>Pathname:</strong><br>
+        <span id="path">Loading...</span>
+    </div>
+    
+    <div class="info">
+        <strong>Time:</strong><br>
+        <span id="time">Loading...</span>
+    </div>
+    
+    <script>
+        console.log('🎮 Test page loaded successfully!');
+        console.log('URL:', window.location.href);
+        console.log('Host:', window.location.host);
+        console.log('Pathname:', window.location.pathname);
+        
+        document.getElementById('url').textContent = window.location.href;
+        document.getElementById('host').textContent = window.location.host;
+        document.getElementById('path').textContent = window.location.pathname;
+        document.getElementById('time').textContent = new Date().toLocaleString();
+    </script>
+</body>
+</html>
