@@ -817,7 +817,15 @@ async function handleHelpCommand(message: any) {
 
 async function checkStreamerLive(channelName: string): Promise<any> {
   try {
-    const response = await axios.get(`https://kick.com/api/v2/channels/${channelName}`);
+    const response = await axios.get(`https://kick.com/api/v2/channels/${channelName}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': 'https://kick.com/',
+        'Origin': 'https://kick.com'
+      }
+    });
     const data = response.data;
     const livestream = data.livestream;
     
