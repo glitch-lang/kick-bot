@@ -79,6 +79,25 @@ export class WatchPartyServer {
       }
     });
 
+    // CRITICAL: Set headers to allow Discord Activities to frame our content
+    this.app.use((req, res, next) => {
+      // Remove X-Frame-Options to allow Discord's iframe
+      res.removeHeader('X-Frame-Options');
+      
+      // Set CSP to allow Discord's discordsays.com domain to frame us
+      res.setHeader(
+        'Content-Security-Policy',
+        "frame-ancestors 'self' https://*.discordsays.com https://discord.com"
+      );
+      
+      // Additional CORS headers for Activity
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      
+      next();
+    });
+
     // Setup OAuth if config provided
     if (db && oauthConfig) {
       this.oauthRouter = new OAuthRouter(db, oauthConfig);
