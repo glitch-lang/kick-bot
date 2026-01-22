@@ -594,15 +594,15 @@
                 .then(data => {
                     document.title = `Watch Party - ${data.streamerName}`;
                     
-                    // Load Kick player
-                    // For Discord Activities, we need to specify both the Railway domain AND discord.com as parents
-                    const parentDomain = window.location.hostname;
-                    const playerUrl = `https://player.kick.com/${data.streamerName}?autoplay=true&muted=false&parent=${parentDomain}&parent=discord.com`;
+                    // Load Kick player using Discord's URL Mapping proxy
+                    // Instead of direct URLs, we use relative paths that Discord maps to Kick
+                    // Query parameters are preserved through the proxy
+                    const playerUrl = `/.proxy/kick-player/${data.streamerName}?autoplay=true&muted=false`;
                     kickPlayer.src = playerUrl;
                     loading.style.display = 'none';
 
-                    // Load Kick chat
-                    kickChatIframe.src = `https://kick.com/popout/${data.streamerName}/chat`;
+                    // Load Kick chat using Discord's URL Mapping proxy
+                    kickChatIframe.src = `/.proxy/kick-chat/${data.streamerName}/chat`;
 
                     // Start anti-farm heartbeat system
                     startAntiFarmHeartbeat(partyId, data.streamerName);

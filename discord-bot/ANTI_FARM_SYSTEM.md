@@ -66,20 +66,28 @@ The watch party system includes a sophisticated anti-farm mechanism to ensure po
 
 ## Kick Iframe Configuration
 
-**Player URL:**
+**Player URL (Using Discord's URL Mapping):**
 ```javascript
-https://player.kick.com/${streamer}?autoplay=true&muted=false&parent=${domain}&parent=discord.com
+/.proxy/kick-player/${streamer}?autoplay=true&muted=false
 ```
 
-**Why both parents?**
-- `parent=${domain}` - Your Railway URL
-- `parent=discord.com` - Discord's iframe domain
-- Kick's player validates the parent domain
+**How it works:**
+- `/.proxy/` - Discord's proxy prefix
+- `kick-player` - Your URL mapping prefix (set in Discord Developer Portal)
+- Discord proxies the request to `https://player.kick.com/${streamer}`
+- Query parameters pass through the proxy
 
-**Important:** 
-- Kick may need to whitelist your Railway domain
-- If player doesn't load, this is likely why
-- Test with browser console for CORS errors
+**Why use Discord's proxy?**
+- ✅ Follows Discord's Content Security Policy (CSP)
+- ✅ Bypasses X-Frame-Options restrictions
+- ✅ No parent domain whitelisting needed
+- ✅ Works across all platforms (Desktop/Web/Mobile)
+
+**Setup Required:**
+- Add URL Mapping in Discord Developer Portal:
+  - **Prefix:** `/kick-player`
+  - **Target:** `https://player.kick.com`
+- See `DISCORD_URL_MAPPINGS.md` for full setup guide
 
 ---
 
