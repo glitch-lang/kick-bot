@@ -85,13 +85,15 @@ export class ActivityLauncher {
 
       console.log(`🎬 Creating watch party for ${streamerName} in ${interaction.guild?.name}`);
 
-      // Create watch party
+      // Create watch party for Discord Activity
+      // isActivity: true = Kick player loads client-side, no server-side Kick API calls
       const partyId = this.watchPartyServer.createWatchParty(
         streamerName,
         interaction.guildId!,
         interaction.guild?.name || 'Unknown Server',
         relayToKick,
-        twoWayChat
+        twoWayChat,
+        true // isActivity - skip server-side Kick connection
       );
 
       console.log(`✅ Watch party created: ${partyId}`);
