@@ -34,6 +34,10 @@
                 console.log('Channel ID:', discordSdk.channelId);
                 console.log('Guild ID:', discordSdk.guildId);
                 
+                // Store Discord context globally
+                window.discordChannelId = discordSdk.channelId;
+                window.discordGuildId = discordSdk.guildId;
+                
                 // Authorize with Discord (optional, for user info)
                 try {
                     const { code } = await discordSdk.commands.authorize({
@@ -56,6 +60,22 @@
                         window.DISCORD_USERNAME = user.username;
                         window.DISCORD_USER_ID = user.id;
                         window.DISCORD_AVATAR = user.avatar;
+                    }
+
+                    // Get guild name if in a guild
+                    if (discordSdk.guildId) {
+                        try {
+                            const guild = await discordSdk.commands.getGuild();
+                            if (guild && guild.name) {
+                                window.discordGuildName = guild.name;
+                                console.log('✅ Guild:', guild.name);
+                            }
+                        } catch (e) {
+                            console.warn('⚠️ Could not get guild info:', e);
+                            window.discordGuildName = 'Discord Server';
+                        }
+                    } else {
+                        window.discordGuildName = 'DM Activity';
                     }
                 } catch (e) {
                     console.warn('⚠️ Discord auth not available:', e);
@@ -497,9 +517,74 @@
             }
         }, 2000);
 
-        function joinParty() {
+        function showStreamerSelection() {
+            loading.innerHTML = `
+                <div style="background: #18181b; padding: 30px; border-radius: 12px; max-width: 400px; text-align: center;">
+                    <h2 style="color: #5865f2; margin-bottom: 20px;">🎮 Pick a Streamer</h2>
+                    <p style="margin-bottom: 20px;">Enter a Kick streamer username to watch:</p>
+                    <input 
+                        type="text" 
+                        id="streamerInput" 
+                        placeholder="e.g., bbjess" 
+                        style="width: 100%; padding: 12px; border-radius: 8px; border: 2px solid #5865f2; background: #0e0e10; color: white; font-size: 16px; margin-bottom: 15px;"
+                    />
+                    <button 
+                        onclick="createPartyForStreamer()" 
+                        style="width: 100%; padding: 12px; background: #5865f2; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; font-weight: bold;"
+                    >
+                        Start Watching
+                    </button>
+                    <p style="margin-top: 15px; font-size: 12px; color: #999;">
+                        Everyone in this voice channel will watch together!
+                    </p>
+                </div>
+            `;
+            loading.style.display = 'flex';
+        }
+
+        async function createPartyForStreamer() {
+            const input = document.getElementById('streamerInput');
+            const streamerName = input.value.trim().toLowerCase();
+            
+            if (!streamerName) {
+                alert('Please enter a streamer name!');
+                return;
+            }
+
+            // Show loading
+            loading.innerHTML = '<div class="spinner"></div><p>Creating watch party...</p>';
+            
+            try {
+                // Create a new party via the bot's API
+                const response = await fetch('/api/create-party', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        streamerName,
+                        channelId: window.discordChannelId || 'activity',
+                        guildId: window.discordGuildId || 'activity',
+                        guildName: window.discordGuildName || 'Discord Activity'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.partyId) {
+                    // Redirect to the party URL
+                    window.location.href = `/activity/${data.partyId}`;
+                } else {
+                    throw new Error('Failed to create party');
+                }
+            } catch (error) {
+                console.error('Error creating party:', error);
+                loading.innerHTML = '<p style="color: #ff4444;">❌ Failed to create party. Please try again!</p>';
+            }
+        }
+
+        async function joinParty() {
+            // If no partyId, show streamer selection UI
             if (!partyId) {
-                addSystemMessage('❌ Invalid party ID', 'error');
+                showStreamerSelection();
                 return;
             }
 

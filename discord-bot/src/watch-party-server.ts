@@ -188,6 +188,30 @@ export class WatchPartyServer {
 
       res.json({ success: true });
     });
+
+    // Create a new party (from Discord Activity)
+    this.app.post('/api/create-party', (req, res) => {
+      const { streamerName, channelId, guildId, guildName } = req.body;
+      
+      if (!streamerName) {
+        return res.status(400).json({ error: 'Streamer name required' });
+      }
+
+      // Create the party
+      const partyId = this.createWatchParty(
+        streamerName,
+        guildId || 'activity',
+        guildName || 'Discord Activity',
+        false, // relayToKick
+        true   // twoWayChat
+      );
+
+      res.json({ 
+        success: true,
+        partyId,
+        url: `/activity/${partyId}`
+      });
+    });
   }
 
   private setupSocketIO() {
