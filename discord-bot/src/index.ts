@@ -270,10 +270,20 @@ client.once('ready', async () => {
       const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN!);
       
       const commands = [
+        // Entry Point command (type 4) - REQUIRED by Discord
+        {
+          name: 'Launch Activity',
+          type: 4, // PRIMARY_ENTRY_POINT
+          handler: 2, // DiscordLaunchActivity
+          description: 'Launch the Kick Watch Party activity',
+          integration_types: [0, 1], // GUILD_INSTALL and USER_INSTALL
+          contexts: [0, 1, 2], // GUILD, BOT_DM, PRIVATE_CHANNEL
+        },
+        // Slash command (type 1)
         activityLauncher.getSlashCommand().toJSON()
       ];
       
-      console.log('🔄 Registering Discord Activity slash commands...');
+      console.log('🔄 Registering Discord Activity commands...');
       
       // Register globally (can take up to 1 hour to propagate)
       // For testing, you can use guild-specific commands instead
@@ -282,8 +292,9 @@ client.once('ready', async () => {
         { body: commands }
       );
       
-      console.log('✅ Discord Activity slash commands registered!');
-      console.log('   Use /activity <streamer> to launch watch parties');
+      console.log('✅ Discord Activity commands registered!');
+      console.log('   📱 Entry Point: Launch from Activity shelf (rocket icon)');
+      console.log('   💬 Slash command: /activity <streamer>');
       
     } catch (error) {
       console.error('❌ Failed to register slash commands:', error);
