@@ -156,6 +156,11 @@ export class WatchPartyServer {
       res.sendFile(path.join(__dirname, 'public/test.html'));
     });
 
+    // Super simple test (no JavaScript, just HTML)
+    this.app.get('/simple', (req, res) => {
+      res.sendFile(path.join(__dirname, 'public/simple-test.html'));
+    });
+
     // Get party info
     this.app.get('/api/party/:partyId', (req, res) => {
       const party = this.watchParties.get(req.params.partyId);

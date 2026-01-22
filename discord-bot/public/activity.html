@@ -403,12 +403,14 @@
         <div class="video-container">
             <div class="loading" id="loading">
                 <div class="spinner"></div>
-                <p id="loading-text">Loading stream...</p>
-                <div id="debug-info" style="margin-top: 15px; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 8px; font-size: 11px; text-align: left; max-width: 500px;">
-                    <div style="margin-bottom: 5px;"><strong>🔍 Debug:</strong></div>
-                    <div>URL: <span id="debug-url">checking...</span></div>
-                    <div>Party ID: <span id="debug-party-id">checking...</span></div>
-                    <div>Status: <span id="debug-status">Initializing...</span></div>
+                <p id="loading-text" style="font-size: 20px; font-weight: bold;">Loading Activity...</p>
+                <div id="debug-info" style="margin-top: 20px; padding: 20px; background: rgba(255,255,255,0.1); border: 2px solid #5865f2; border-radius: 12px; font-size: 14px; text-align: left; max-width: 600px; line-height: 1.8;">
+                    <div style="margin-bottom: 15px; font-size: 18px; color: #5865f2;"><strong>🔍 DEBUG INFO</strong></div>
+                    <div><strong>1. HTML Loaded:</strong> <span style="color: #00ff00;">✅ YES</span></div>
+                    <div><strong>2. URL:</strong> <span id="debug-url" style="color: #ffaa00;">checking...</span></div>
+                    <div><strong>3. Party ID:</strong> <span id="debug-party-id" style="color: #ffaa00;">checking...</span></div>
+                    <div><strong>4. Status:</strong> <span id="debug-status" style="color: #ffaa00;">Initializing...</span></div>
+                    <div id="debug-extra" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.2);"></div>
                 </div>
             </div>
             <iframe id="kickPlayer" allow="autoplay; fullscreen" allowfullscreen></iframe>
@@ -453,15 +455,32 @@
         console.log('  Pathname:', window.location.pathname);
         console.log('  Host:', window.location.host);
         
-        // Update debug UI
+        // Update debug UI - make it very visible
         setTimeout(() => {
             const debugUrl = document.getElementById('debug-url');
             const debugPartyId = document.getElementById('debug-party-id');
             const debugStatus = document.getElementById('debug-status');
+            const debugExtra = document.getElementById('debug-extra');
             
-            if (debugUrl) debugUrl.textContent = window.location.pathname;
-            if (debugPartyId) debugPartyId.textContent = partyId || 'NONE - will show streamer picker';
-            if (debugStatus) debugStatus.textContent = 'Waiting for Discord SDK...';
+            if (debugUrl) {
+                debugUrl.textContent = window.location.pathname;
+                debugUrl.style.color = '#00ff00';
+            }
+            if (debugPartyId) {
+                debugPartyId.textContent = partyId || 'NONE - will show streamer picker';
+                debugPartyId.style.color = partyId ? '#00ff00' : '#ffaa00';
+            }
+            if (debugStatus) {
+                debugStatus.textContent = 'Waiting for Discord SDK...';
+                debugStatus.style.color = '#ffaa00';
+            }
+            if (debugExtra) {
+                debugExtra.innerHTML = `
+                    <div><strong>Host:</strong> ${window.location.host}</div>
+                    <div><strong>Full URL:</strong> ${window.location.href}</div>
+                    <div><strong>Time:</strong> ${new Date().toLocaleTimeString()}</div>
+                `;
+            }
         }, 100);
         
         // Tab switching
