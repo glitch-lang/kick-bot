@@ -29,6 +29,11 @@ interface WatchParty {
   }>;
 }
 
+interface HeartbeatRecord {
+  timestamp: number;
+  legitimacyScore: number;
+}
+
 export class WatchPartyServer {
   private app: express.Application;
   private server: http.Server;
@@ -39,6 +44,7 @@ export class WatchPartyServer {
   private oauthRouter?: OAuthRouter;
   private db?: Database;
   private discordAuthManager?: any;
+  private heartbeatHistory: Map<string, HeartbeatRecord[]> = new Map(); // discordId -> heartbeats
 
   constructor(
     port: number = 3001, 
@@ -211,6 +217,73 @@ export class WatchPartyServer {
         partyId,
         url: `/activity/${partyId}`
       });
+    });
+
+    // Heartbeat endpoint for anti-farm points tracking
+    this.app.post('/api/heartbeat', async (req, res) => {
+      const { partyId, streamerName, discordId, username, legitimacyScore, timestamp } = req.body;
+
+      // Validate required fields
+      if (!partyId || !discordId || legitimacyScore === undefined) {
+        return res.status(400).json({ error: 'Missing required fields' });
+      }
+
+      // Reject low legitimacy scores (< 60)
+      if (legitimacyScore < 60) {
+        return res.status(400).json({ error: 'Legitimacy score too low', score: legitimacyScore });
+      }
+
+      // Check if party exists
+      const party = this.watchParties.get(partyId);
+      if (!party) {
+        return res.status(404).json({ error: 'Party not found' });
+      }
+
+      // Verify the party is actually for this streamer (prevent gaming the system)
+      if (party.streamerName !== streamerName.toLowerCase()) {
+        return res.status(400).json({ error: 'Streamer mismatch' });
+      }
+
+      // Award points (1 minute of watch time per heartbeat)
+      if (this.db) {
+        try {
+          // Check if user has an active viewing session
+          const hasActiveSession = Array.from(party.viewers.values()).some(
+            viewer => viewer.discordId === discordId
+          );
+
+          if (!hasActiveSession) {
+            return res.status(400).json({ error: 'No active viewing session' });
+          }
+
+          // Anti-farm fraud detection
+          const fraudCheck = this.detectFraud(discordId, legitimacyScore, timestamp);
+          if (!fraudCheck.isLegit) {
+            console.warn(`🚫 FRAUD DETECTED: ${username} (${discordId}) - ${fraudCheck.reason}`);
+            return res.status(429).json({ 
+              error: 'Suspicious activity detected', 
+              reason: fraudCheck.reason 
+            });
+          }
+
+          // Log the heartbeat
+          console.log(`💗 Heartbeat: ${username} (${discordId}) watching ${streamerName} - Score: ${legitimacyScore}/100`);
+
+          // Get user's total watch time
+          const stats = await this.db.getUserWatchTime(discordId);
+
+          res.json({ 
+            success: true,
+            totalMinutes: stats.totalMinutes,
+            legitimacyScore
+          });
+        } catch (error) {
+          console.error('Heartbeat error:', error);
+          res.status(500).json({ error: 'Server error' });
+        }
+      } else {
+        res.json({ success: true, message: 'Heartbeat received (DB not configured)' });
+      }
     });
   }
 
@@ -512,6 +585,59 @@ export class WatchPartyServer {
         );
         break;
     }
+  }
+
+  private detectFraud(discordId: string, legitimacyScore: number, timestamp: number): { isLegit: boolean; reason?: string } {
+    // Get or create heartbeat history for this user
+    if (!this.heartbeatHistory.has(discordId)) {
+      this.heartbeatHistory.set(discordId, []);
+    }
+
+    const history = this.heartbeatHistory.get(discordId)!;
+    const now = Date.now();
+
+    // Add current heartbeat to history
+    history.push({ timestamp, legitimacyScore });
+
+    // Keep only last 10 heartbeats (last ~10 minutes)
+    if (history.length > 10) {
+      history.shift();
+    }
+
+    // Fraud Detection Rules:
+
+    // 1. Check for rapid-fire heartbeats (< 25 seconds apart)
+    if (history.length >= 2) {
+      const lastHeartbeat = history[history.length - 2];
+      const timeDiff = timestamp - lastHeartbeat.timestamp;
+      if (timeDiff < 25000) {
+        return { isLegit: false, reason: 'Heartbeats too frequent' };
+      }
+    }
+
+    // 2. Check for suspiciously perfect scores (all 100s = likely bot)
+    if (history.length >= 5) {
+      const recentScores = history.slice(-5).map(h => h.legitimacyScore);
+      const allPerfect = recentScores.every(score => score === 100);
+      if (allPerfect) {
+        return { isLegit: false, reason: 'Suspiciously perfect pattern' };
+      }
+    }
+
+    // 3. Check average legitimacy score
+    const avgScore = history.reduce((sum, h) => sum + h.legitimacyScore, 0) / history.length;
+    if (avgScore < 65) {
+      return { isLegit: false, reason: 'Low average legitimacy' };
+    }
+
+    // 4. Check for heartbeat bursts (too many in short time)
+    const last5Minutes = history.filter(h => now - h.timestamp < 300000);
+    if (last5Minutes.length > 6) { // Max 5 legit heartbeats in 5 minutes
+      return { isLegit: false, reason: 'Too many heartbeats in short period' };
+    }
+
+    // Passed all fraud checks
+    return { isLegit: true };
   }
 
   private generatePartyId(): string {

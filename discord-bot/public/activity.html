@@ -595,12 +595,17 @@
                     document.title = `Watch Party - ${data.streamerName}`;
                     
                     // Load Kick player
-                    const playerUrl = `https://player.kick.com/${data.streamerName}?autoplay=true&muted=true&parent=${window.location.hostname}`;
+                    // For Discord Activities, we need to specify both the Railway domain AND discord.com as parents
+                    const parentDomain = window.location.hostname;
+                    const playerUrl = `https://player.kick.com/${data.streamerName}?autoplay=true&muted=false&parent=${parentDomain}&parent=discord.com`;
                     kickPlayer.src = playerUrl;
                     loading.style.display = 'none';
 
                     // Load Kick chat
                     kickChatIframe.src = `https://kick.com/popout/${data.streamerName}/chat`;
+
+                    // Start anti-farm heartbeat system
+                    startAntiFarmHeartbeat(partyId, data.streamerName);
 
                     // Join party via socket
                     socket.emit('join-party', { 
@@ -701,6 +706,118 @@
             div.textContent = text;
             return div.innerHTML;
         }
+
+        // Anti-Farm Heartbeat System
+        let heartbeatInterval = null;
+        let lastHeartbeat = 0;
+        let consecutiveFailures = 0;
+
+        function startAntiFarmHeartbeat(partyId, streamerName) {
+            // Clear any existing heartbeat
+            if (heartbeatInterval) {
+                clearInterval(heartbeatInterval);
+            }
+
+            console.log('🛡️ Starting anti-farm heartbeat system');
+
+            // Send heartbeat every 60 seconds
+            heartbeatInterval = setInterval(() => {
+                sendHeartbeat(partyId, streamerName);
+            }, 60000); // 1 minute
+
+            // Send initial heartbeat after 30 seconds
+            setTimeout(() => sendHeartbeat(partyId, streamerName), 30000);
+        }
+
+        async function sendHeartbeat(partyId, streamerName) {
+            const now = Date.now();
+            
+            // Prevent spam (must be at least 25 seconds between heartbeats)
+            if (now - lastHeartbeat < 25000) {
+                console.warn('⚠️ Heartbeat too frequent, skipping');
+                return;
+            }
+
+            // Check if user actually has focus
+            const hasFocus = document.hasFocus();
+            
+            // Check if iframe is loaded (basic check)
+            const kickPlayer = document.getElementById('kickPlayer');
+            const isPlayerLoaded = kickPlayer && kickPlayer.src;
+
+            // Check if page has been visible recently (using Page Visibility API)
+            const isVisible = document.visibilityState === 'visible';
+
+            // Calculate legitimacy score (0-100)
+            let legitimacyScore = 0;
+            if (hasFocus) legitimacyScore += 40;
+            if (isPlayerLoaded) legitimacyScore += 30;
+            if (isVisible) legitimacyScore += 30;
+
+            // Only count as legitimate if score >= 60
+            if (legitimacyScore < 60) {
+                consecutiveFailures++;
+                console.warn(`⚠️ Low legitimacy score: ${legitimacyScore}/100 (failures: ${consecutiveFailures})`);
+                
+                // If 3 consecutive failures, warn user
+                if (consecutiveFailures >= 3) {
+                    addSystemMessage('⚠️ Activity detected as idle. Keep window focused to earn points!', 'warning');
+                }
+                
+                return;
+            }
+
+            // Reset failure counter on success
+            consecutiveFailures = 0;
+            lastHeartbeat = now;
+
+            // Send heartbeat to server
+            try {
+                const response = await fetch('/api/heartbeat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        partyId,
+                        streamerName,
+                        discordId: window.DISCORD_USER_ID,
+                        username: window.DISCORD_USERNAME || currentUsername,
+                        legitimacyScore,
+                        timestamp: now
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log(`✅ Heartbeat sent: ${legitimacyScore}/100 score`);
+                    
+                    // Show points update if available
+                    if (data.totalMinutes) {
+                        // Update UI with points (optional)
+                        console.log(`💎 Total watch time: ${data.totalMinutes} minutes`);
+                    }
+                } else {
+                    console.error('❌ Heartbeat failed:', response.status);
+                }
+            } catch (error) {
+                console.error('❌ Heartbeat error:', error);
+            }
+        }
+
+        // Stop heartbeat when page is about to unload
+        window.addEventListener('beforeunload', () => {
+            if (heartbeatInterval) {
+                clearInterval(heartbeatInterval);
+            }
+        });
+
+        // Pause heartbeat when page is hidden
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') {
+                console.log('⏸️ Page hidden, heartbeats will be rejected');
+            } else {
+                console.log('▶️ Page visible again');
+            }
+        });
     </script>
 </body>
 </html>
