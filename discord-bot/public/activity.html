@@ -26,13 +26,17 @@
         
         async function setupDiscordSdk() {
             console.log('🎮 Initializing Discord Activity...');
+            console.log('  Client ID:', window.DISCORD_CLIENT_ID);
+            console.log('  SDK instance:', discordSdk ? 'Created' : 'Failed');
             
             try {
                 // Wait for Discord to be ready
+                console.log('⏳ Waiting for Discord SDK ready...');
                 await discordSdk.ready();
                 console.log('✅ Discord SDK ready!');
-                console.log('Channel ID:', discordSdk.channelId);
-                console.log('Guild ID:', discordSdk.guildId);
+                console.log('  Channel ID:', discordSdk.channelId);
+                console.log('  Guild ID:', discordSdk.guildId);
+                console.log('  Instance ID:', discordSdk.instanceId);
                 
                 // Store Discord context globally
                 window.discordChannelId = discordSdk.channelId;
@@ -399,7 +403,13 @@
         <div class="video-container">
             <div class="loading" id="loading">
                 <div class="spinner"></div>
-                <p>Loading stream...</p>
+                <p id="loading-text">Loading stream...</p>
+                <div id="debug-info" style="margin-top: 15px; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 8px; font-size: 11px; text-align: left; max-width: 500px;">
+                    <div style="margin-bottom: 5px;"><strong>🔍 Debug:</strong></div>
+                    <div>URL: <span id="debug-url">checking...</span></div>
+                    <div>Party ID: <span id="debug-party-id">checking...</span></div>
+                    <div>Status: <span id="debug-status">Initializing...</span></div>
+                </div>
             </div>
             <iframe id="kickPlayer" allow="autoplay; fullscreen" allowfullscreen></iframe>
         </div>
@@ -435,6 +445,24 @@
     <script>
         // Get party ID from URL
         const partyId = window.location.pathname.split('/activity/')[1] || window.location.pathname.split('/party/')[1];
+        
+        // DEBUG: Log critical info immediately
+        console.log('🔍 DEBUG INFO:');
+        console.log('  Current URL:', window.location.href);
+        console.log('  Party ID:', partyId);
+        console.log('  Pathname:', window.location.pathname);
+        console.log('  Host:', window.location.host);
+        
+        // Update debug UI
+        setTimeout(() => {
+            const debugUrl = document.getElementById('debug-url');
+            const debugPartyId = document.getElementById('debug-party-id');
+            const debugStatus = document.getElementById('debug-status');
+            
+            if (debugUrl) debugUrl.textContent = window.location.pathname;
+            if (debugPartyId) debugPartyId.textContent = partyId || 'NONE - will show streamer picker';
+            if (debugStatus) debugStatus.textContent = 'Waiting for Discord SDK...';
+        }, 100);
         
         // Tab switching
         document.addEventListener('DOMContentLoaded', () => {
@@ -582,27 +610,42 @@
         }
 
         async function joinParty() {
+            console.log('🎬 joinParty() called');
+            console.log('  Party ID:', partyId);
+            
             // If no partyId, show streamer selection UI
             if (!partyId) {
+                console.log('  No party ID found, showing streamer selection...');
                 showStreamerSelection();
                 return;
             }
 
+            console.log('  Fetching party info from /api/party/' + partyId);
+            
             // Load party info
             fetch(`/api/party/${partyId}`)
-                .then(res => res.json())
+                .then(res => {
+                    console.log('  API response status:', res.status);
+                    return res.json();
+                })
                 .then(data => {
+                    console.log('  Party data received:', data);
                     document.title = `Watch Party - ${data.streamerName}`;
                     
                     // Load Kick player using Discord's URL Mapping proxy
                     // Instead of direct URLs, we use relative paths that Discord maps to Kick
                     // Query parameters are preserved through the proxy
                     const playerUrl = `/.proxy/kick-player/${data.streamerName}?autoplay=true&muted=false`;
+                    const chatUrl = `/.proxy/kick-chat/${data.streamerName}/chat`;
+                    
+                    console.log('  Loading Kick player:', playerUrl);
+                    console.log('  Loading Kick chat:', chatUrl);
+                    
                     kickPlayer.src = playerUrl;
                     loading.style.display = 'none';
 
                     // Load Kick chat using Discord's URL Mapping proxy
-                    kickChatIframe.src = `/.proxy/kick-chat/${data.streamerName}/chat`;
+                    kickChatIframe.src = chatUrl;
 
                     // Start anti-farm heartbeat system
                     startAntiFarmHeartbeat(partyId, data.streamerName);
