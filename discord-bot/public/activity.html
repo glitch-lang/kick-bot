@@ -636,16 +636,17 @@
                     // Instead of direct URLs, we use relative paths that Discord maps to Kick
                     // Query parameters are preserved through the proxy
                     const playerUrl = `/.proxy/kick-player/${data.streamerName}?autoplay=true&muted=false`;
-                    const chatUrl = `/.proxy/kick-chat/${data.streamerName}/chat`;
+                    
+                    // Discord appends the full path after the prefix
+                    // /kick-chat maps to kick.com, so /kick-chat/popout/X/chat → kick.com/popout/X/chat
+                    const chatUrl = `/.proxy/kick-chat/popout/${data.streamerName}/chat`;
                     
                     console.log('  Loading Kick player:', playerUrl);
                     console.log('  Loading Kick chat:', chatUrl);
                     
                     kickPlayer.src = playerUrl;
-                    loading.style.display = 'none';
-
-                    // Load Kick chat using Discord's URL Mapping proxy
                     kickChatIframe.src = chatUrl;
+                    loading.style.display = 'none';
 
                     // Start anti-farm heartbeat system
                     startAntiFarmHeartbeat(partyId, data.streamerName);
