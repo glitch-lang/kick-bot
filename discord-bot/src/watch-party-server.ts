@@ -454,6 +454,8 @@ export class WatchPartyServer {
         console.log(`✅ Two-way chat connected for ${streamerName} (party: ${partyId})`);
       } else {
         console.log(`⚠️ Could not connect two-way chat for ${streamerName}`);
+        console.log(`   ℹ️  Watch party will work, but messages won't relay between Discord and Kick`);
+        console.log(`   ℹ️  Users can still see Kick chat in the embedded player`);
       }
 
     } catch (error) {
