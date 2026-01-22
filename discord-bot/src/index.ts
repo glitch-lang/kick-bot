@@ -48,7 +48,7 @@ let activityLauncher: ActivityLauncher | null = null;
 // Start LocalTunnel if enabled
 async function startTunnel() {
   if (!ENABLE_TUNNEL) {
-    console.log('🌐 LocalTunnel disabled (set ENABLE_TUNNEL=true in .env to enable)');
+    console.log('🌐 Tunnel disabled (set ENABLE_TUNNEL=true in .env to enable)');
     return;
   }
 
@@ -68,7 +68,9 @@ async function startTunnel() {
     console.log(`   🔗 Your watch parties are now public at:`);
     console.log(`   ${PUBLIC_URL}`);
     console.log('');
-    console.log(`   Share this URL with anyone in the world! 🌍`);
+    console.log(`   ⚠️  IMPORTANT: Visit this URL in your browser ONCE`);
+    console.log(`   Enter your IP: 67.223.30.204 to bypass the password page`);
+    console.log(`   Then update Discord Developer Portal with this URL!`);
     console.log('');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('');
@@ -94,7 +96,6 @@ async function startTunnel() {
   } catch (error: any) {
     console.error('❌ Failed to start LocalTunnel:', error.message);
     console.log('   Using local URL instead: http://localhost:3001');
-    console.log('   To fix: npm install -g localtunnel');
   }
 }
 

@@ -84,6 +84,12 @@ export class WatchPartyServer {
   }
 
   private setupRoutes() {
+    // Bypass LocalTunnel interstitial page for Discord Activities
+    this.app.use((req, res, next) => {
+      res.setHeader('Bypass-Tunnel-Reminder', 'true');
+      next();
+    });
+    
     this.app.use(express.json());
     this.app.use(express.static(path.join(__dirname, 'public')));
 
