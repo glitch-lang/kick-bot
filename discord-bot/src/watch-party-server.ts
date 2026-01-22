@@ -203,13 +203,15 @@ export class WatchPartyServer {
         return res.status(400).json({ error: 'Streamer name required' });
       }
 
-      // Create the party
+      // Create the party for Discord Activity
+      // isActivity: true = Skip server-side Kick API calls (player loads client-side)
       const partyId = this.createWatchParty(
         streamerName,
         guildId || 'activity',
         guildName || 'Discord Activity',
         false, // relayToKick
-        true   // twoWayChat
+        true,  // twoWayChat (for Discord party chat, not Kick)
+        true   // isActivity (skip server-side Kick connection)
       );
 
       res.json({ 
@@ -403,7 +405,14 @@ export class WatchPartyServer {
     });
   }
 
-  createWatchParty(streamerName: string, guildId: string, guildName: string, relayToKick: boolean = false, twoWayChat: boolean = true): string {
+  createWatchParty(
+    streamerName: string, 
+    guildId: string, 
+    guildName: string, 
+    relayToKick: boolean = false, 
+    twoWayChat: boolean = true, 
+    isActivity: boolean = false
+  ): string {
     const partyId = this.generatePartyId();
     
     const party: WatchParty = {
@@ -419,11 +428,16 @@ export class WatchPartyServer {
     };
 
     this.watchParties.set(partyId, party);
-    console.log(`🎉 Created watch party: ${partyId} for ${streamerName} (Kick relay: ${relayToKick}, Two-way: ${twoWayChat})`);
+    console.log(`🎉 Created watch party: ${partyId} for ${streamerName} (Activity: ${isActivity}, Kick relay: ${relayToKick}, Two-way: ${twoWayChat})`);
 
-    // Connect to Kick chat if two-way chat is enabled
-    if (twoWayChat) {
+    // For Discord Activities: Skip server-side Kick chat connection
+    // The Kick player + chat iframes load directly in user's browser via Discord's proxy
+    // This is how all Discord Activities work (Watch Together, YouTube Together, etc.)
+    if (twoWayChat && !isActivity) {
+      // Only connect for non-Activity watch parties (legacy feature)
       this.connectToKickChat(partyId, streamerName);
+    } else if (isActivity) {
+      console.log(`ℹ️  Activity mode: Kick chat loads client-side in embedded player (no server-side connection needed)`);
     }
 
     return partyId;
